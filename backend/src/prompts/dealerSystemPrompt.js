@@ -1,4 +1,4 @@
-import { COMPANY } from '../../../shared/company.js'
+import { COMPANY } from '../config/company.js'
 
 export function buildDealerSystemPrompt({ intent, promptFacts }) {
   return `

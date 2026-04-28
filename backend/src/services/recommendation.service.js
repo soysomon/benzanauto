@@ -1,4 +1,4 @@
-import { COMPANY, buildMapsUrl, buildWhatsAppUrl } from '../../../shared/company.js'
+import { COMPANY, buildMapsUrl, buildWhatsAppUrl } from '../config/company.js'
 import { vehicles } from '../data/inventory.js'
 import { getUsdToDopRate, normalizeText } from './context.service.js'
 

@@ -1,1 +1,1 @@
-export { vehicles } from '../../../shared/inventory.js'
+export { vehicles } from './vehicles.js'

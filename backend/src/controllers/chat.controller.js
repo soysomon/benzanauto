@@ -1,4 +1,4 @@
-import { COMPANY } from '../../../shared/company.js'
+import { COMPANY } from '../config/company.js'
 import { vehicles } from '../data/inventory.js'
 import { buildDealerSystemPrompt } from '../prompts/dealerSystemPrompt.js'
 import { askGemini, getGeminiCooldownRemainingMs, isGeminiAvailable } from '../services/gemini.service.js'
