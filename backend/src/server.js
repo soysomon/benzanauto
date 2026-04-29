@@ -16,6 +16,25 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:4173',
 ]
 
+function normalizeOrigin(origin, { assumeHttps = false } = {}) {
+  if (typeof origin !== 'string') return ''
+
+  const trimmed = origin.trim().replace(/\/$/, '')
+  if (!trimmed) return ''
+
+  const candidate = /^[a-z]+:\/\//i.test(trimmed)
+    ? trimmed
+    : assumeHttps
+      ? `https://${trimmed}`
+      : trimmed
+
+  try {
+    return new URL(candidate).origin
+  } catch {
+    return candidate
+  }
+}
+
 function isLoopbackOrigin(origin) {
   try {
     const { protocol, hostname } = new URL(origin)
@@ -27,7 +46,10 @@ function isLoopbackOrigin(origin) {
 }
 
 function isAllowedOrigin(origin) {
-  return !origin || allowedOrigins.has(origin) || isLoopbackOrigin(origin)
+  if (!origin) return true
+
+  const normalizedOrigin = normalizeOrigin(origin)
+  return allowedOrigins.has(normalizedOrigin) || isLoopbackOrigin(normalizedOrigin)
 }
 
 function getAllowedOrigins() {
@@ -35,9 +57,9 @@ function getAllowedOrigins() {
     [process.env.FRONTEND_URLS, process.env.FRONTEND_URL]
       .filter(Boolean)
       .flatMap((value) => value.split(','))
-      .map((value) => value.trim())
+      .map((value) => normalizeOrigin(value, { assumeHttps: true }))
       .filter(Boolean)
-      .concat(DEFAULT_ALLOWED_ORIGINS),
+      .concat(DEFAULT_ALLOWED_ORIGINS.map((value) => normalizeOrigin(value))),
   )
 }
 
