@@ -1,13 +1,29 @@
 import { COMPANY, buildWhatsAppUrl } from '../../shared/company.js'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? ''
+function normalizeBaseUrl(baseUrl) {
+  if (typeof baseUrl !== 'string') return ''
+
+  const trimmed = baseUrl.trim().replace(/\/$/, '')
+  if (!trimmed) return ''
+
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed
+
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(trimmed)) {
+    return `http://${trimmed}`
+  }
+
+  return `https://${trimmed}`
+}
+
+const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_URL)
 const REQUEST_TIMEOUT_MS = 15_000
 const LOCAL_API_BASES = ['http://localhost:4000', 'http://127.0.0.1:4000']
 
 function buildEndpoint(baseUrl) {
   if (!baseUrl) return null
 
-  const normalized = baseUrl.replace(/\/$/, '')
+  const normalized = normalizeBaseUrl(baseUrl)
   return normalized.endsWith('/api/chat') ? normalized : `${normalized}/api/chat`
 }
 
@@ -25,7 +41,7 @@ function getChatEndpointCandidates() {
 
   append(API_BASE_URL)
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && !API_BASE_URL) {
     if (window.location.protocol !== 'file:' && window.location.origin && window.location.origin !== 'null') {
       append(window.location.origin)
     }
