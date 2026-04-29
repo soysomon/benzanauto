@@ -780,9 +780,9 @@ export default function Hero() {
           </motion.div>
 
           {/* FILTRO */}
-          <motion.div variants={contentItem} className="mt-12 md:mt-20 w-full px-2 sm:px-0">
+          {/* <motion.div variants={contentItem} className="mt-12 md:mt-20 w-full px-2 sm:px-0">
             <FilterCard />
-          </motion.div>
+          </motion.div> */}
         </motion.div>
 
         {/* DOTS */}
