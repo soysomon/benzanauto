@@ -790,7 +790,7 @@ export default function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1, duration: 0.45 }}
-          className="mt-6 flex items-center gap-2"
+          className="mt-auto flex items-center gap-2"
         >
           {MEDIA_SLIDES.map((_, i) => (
             <button key={i} onClick={() => handleGoTo(i)}>
