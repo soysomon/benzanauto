@@ -1,21 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { vehicles } from '../data/vehicles'
 import VehicleCard from '../components/ui/VehicleCard'
+import StatePanel from '../components/ui/StatePanel'
 import { buildWhatsAppUrl } from '../../shared/company.js'
+import { listPublicVehicles } from '../lib/publicApi'
 
-/* ── helpers ── */
-const fmt = (p) =>
-  new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(p)
+const fmt = (price) =>
+  new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price)
 
-/* ── Collapsible filter section ── */
 function FilterSection({ label, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
+
   return (
     <div className="border-b border-neutral-200 py-5">
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((value) => !value)}
         className="w-full flex items-center justify-between text-left"
       >
         <span className="font-body text-sm font-semibold text-neutral-900 tracking-wide">{label}</span>
@@ -94,6 +94,7 @@ function parsePositiveInteger(searchParams, key) {
 
 function parseInventoryFilters(searchParams, { allBrands, allCategories, allFuels }) {
   return {
+    searchQuery: searchParams.get('q')?.trim() ?? '',
     statusFilter: parseSingleValue(searchParams, 'estado', ['Todos', 'Nuevo', 'Usado'], 'Todos'),
     brands: parseMultiValue(searchParams, 'marca', allBrands),
     categories: [
@@ -108,9 +109,10 @@ function parseInventoryFilters(searchParams, { allBrands, allCategories, allFuel
   }
 }
 
-function buildInventorySearchParams({ statusFilter, brands, categories, fuels, maxPrice, sortBy }) {
+function buildInventorySearchParams({ searchQuery, statusFilter, brands, categories, fuels, maxPrice, sortBy }) {
   const nextParams = new URLSearchParams()
 
+  if (searchQuery?.trim()) nextParams.set('q', searchQuery.trim())
   if (statusFilter !== 'Todos') nextParams.set('estado', statusFilter)
   brands.forEach((brand) => nextParams.append('marca', brand))
   categories.forEach((category) => nextParams.append('tipo', category))
@@ -127,21 +129,32 @@ function toggleListValue(list, value) {
     : [...list, value]
 }
 
-/* ════════════════════════════════════════════════ */
+function normalizeFacets(facets) {
+  return {
+    brands: facets?.brands ?? [],
+    bodyTypes: facets?.bodyTypes ?? [],
+    fuelTypes: facets?.fuelTypes ?? [],
+    conditions: facets?.conditions ?? [],
+  }
+}
 
 export default function Inventario() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const [vehicles, setVehicles] = useState([])
+  const [meta, setMeta] = useState({ total: 0 })
+  const [facets, setFacets] = useState(normalizeFacets(null))
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  /* derived option lists */
-  const allBrands = useMemo(() => [...new Set(vehicles.map(v => v.brand))], [])
-  const allCategories = useMemo(() => [...new Set(vehicles.map(v => v.category))], [])
-  const allFuels = useMemo(() => [...new Set(vehicles.map(v => v.fuel))], [])
+  const allBrands = useMemo(() => facets.brands.map((item) => item.value), [facets.brands])
+  const allCategories = useMemo(() => facets.bodyTypes.map((item) => item.value), [facets.bodyTypes])
+  const allFuels = useMemo(() => facets.fuelTypes.map((item) => item.value), [facets.fuelTypes])
   const filters = useMemo(() => parseInventoryFilters(searchParams, {
     allBrands,
     allCategories,
     allFuels,
   }), [allBrands, allCategories, allFuels, searchParams])
-  const { statusFilter, brands, categories, fuels, maxPrice, sortBy } = filters
+  const { searchQuery, statusFilter, brands, categories, fuels, maxPrice, sortBy } = filters
 
   const updateFilters = (updater) => {
     const nextFilters = typeof updater === 'function' ? updater(filters) : { ...filters, ...updater }
@@ -159,31 +172,56 @@ export default function Inventario() {
     }))
   }
 
-  const filtered = useMemo(() => {
-    let r = [...vehicles]
-    if (statusFilter !== 'Todos')   r = r.filter(v => v.status === statusFilter)
-    if (brands.length)              r = r.filter(v => brands.includes(v.brand))
-    if (categories.length)          r = r.filter(v => categories.includes(v.category))
-    if (fuels.length)               r = r.filter(v => fuels.includes(v.fuel))
-    if (maxPrice)                   r = r.filter(v => v.price <= maxPrice)
-    if (sortBy === 'price-asc')     r.sort((a, b) => a.price - b.price)
-    if (sortBy === 'price-desc')    r.sort((a, b) => b.price - a.price)
-    if (sortBy === 'year')          r.sort((a, b) => b.year - a.year)
-    return r
-  }, [statusFilter, brands, categories, fuels, maxPrice, sortBy])
+  useEffect(() => {
+    let ignore = false
 
-  /* count helpers */
-  const countFor = (field, val) =>
-    vehicles.filter(v =>
-      (statusFilter === 'Todos' || v.status === statusFilter) &&
-      v[field] === val
-    ).length
+    async function loadVehicles() {
+      try {
+        setLoading(true)
+        setError('')
+
+        const response = await listPublicVehicles({
+          limit: 60,
+          q: searchQuery || undefined,
+          estado: statusFilter !== 'Todos' ? [statusFilter] : undefined,
+          marca: brands,
+          tipo: categories,
+          combustible: fuels,
+          precioMax: maxPrice || undefined,
+          orden: sortBy,
+        })
+
+        if (ignore) return
+
+        setVehicles(response.data)
+        setMeta(response.meta)
+        setFacets(normalizeFacets(response.facets))
+      } catch (loadError) {
+        if (!ignore) {
+          setError(loadError.message ?? 'No se pudo cargar el inventario.')
+          setVehicles([])
+          setMeta({ total: 0 })
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadVehicles()
+    return () => { ignore = true }
+  }, [brands, categories, fuels, maxPrice, searchQuery, sortBy, statusFilter])
+
+  const countFor = (facetName, value) =>
+    facets[facetName]?.find((item) => item.value === value)?.count ?? 0
 
   const resetFilters = () => {
     setSearchParams(new URLSearchParams(), { replace: true })
   }
 
   const activeFilters = [
+    searchQuery ? `Búsqueda: "${searchQuery}"` : null,
     statusFilter !== 'Todos' ? statusFilter : null,
     ...brands,
     ...categories,
@@ -194,16 +232,51 @@ export default function Inventario() {
   return (
     <div className="bg-white min-h-screen pt-[72px]">
       <div className="max-w-[1400px] mx-auto px-6 lg:px-10">
+        <div className="flex flex-col gap-4 py-8 border-b border-neutral-200 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="font-body text-3xl font-semibold text-neutral-900 tracking-tight">
+              Inventario
+            </h1>
+            <p className="font-body text-sm text-neutral-500 mt-2">
+              Busca por marca, modelo o palabra clave y combina filtros en tiempo real.
+            </p>
+          </div>
 
-        {/* ── Top header ── */}
-        <div className="flex items-center justify-between py-8 border-b border-neutral-200">
-          <h1 className="font-body text-3xl font-semibold text-neutral-900 tracking-tight">
-            Inventario
-          </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="relative block min-w-[280px]">
+              <span className="sr-only">Buscar vehículo</span>
+              <svg
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => updateFilters({ searchQuery: event.target.value })}
+                placeholder="Buscar Toyota, Prado, diesel..."
+                className="w-full border border-neutral-200 bg-white py-3 pl-11 pr-10 font-body text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => updateFilters({ searchQuery: '' })}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 transition-colors hover:text-neutral-900"
+                  aria-label="Limpiar búsqueda"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              )}
+            </label>
+
             <select
               value={sortBy}
-              onChange={e => updateFilters({ sortBy: e.target.value })}
+              onChange={(event) => updateFilters({ sortBy: event.target.value })}
               className="font-body text-sm text-neutral-700 border-0 bg-transparent pr-6 focus:outline-none cursor-pointer appearance-none"
               style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23737373\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0 center', backgroundSize: '16px' }}
             >
@@ -215,84 +288,76 @@ export default function Inventario() {
           </div>
         </div>
 
-        {/* ── Body: sidebar + grid ── */}
         <div className="flex gap-10 py-8">
-
-          {/* ── SIDEBAR ── */}
           <aside className="hidden lg:block w-60 flex-shrink-0">
-
-            {/* Nuevo / Usado tab */}
             <div className="flex border border-neutral-200 mb-6 overflow-hidden">
-              {['Todos', 'Nuevo', 'Usado'].map(s => (
+              {['Todos', 'Nuevo', 'Usado'].map((status) => (
                 <button
-                  key={s}
-                  onClick={() => updateFilters({ statusFilter: s })}
+                  key={status}
+                  onClick={() => updateFilters({ statusFilter: status })}
                   className={`flex-1 font-body text-sm py-2.5 transition-colors duration-150 ${
-                    statusFilter === s
+                    statusFilter === status
                       ? 'bg-neutral-900 text-white'
                       : 'text-neutral-600 hover:bg-neutral-50'
                   }`}
                 >
-                  {s}
+                  {status}
                 </button>
               ))}
             </div>
 
-            {/* Marca */}
-            <FilterSection label="Marca" defaultOpen={true}>
-              {allBrands.map(b => (
+            <FilterSection label="Marca" defaultOpen>
+              {allBrands.map((brand) => (
                 <CheckRow
-                  key={b}
-                  label={b}
-                  count={countFor('brand', b)}
-                  checked={brands.includes(b)}
-                  onChange={() => toggleFilter('brands', b)}
+                  key={brand}
+                  label={brand}
+                  count={countFor('brands', brand)}
+                  checked={brands.includes(brand)}
+                  onChange={() => toggleFilter('brands', brand)}
                 />
               ))}
             </FilterSection>
 
-            {/* Categoría */}
-            <FilterSection label="Categoría" defaultOpen={true}>
-              {allCategories.map(c => (
+            <FilterSection label="Categoría" defaultOpen>
+              {allCategories.map((category) => (
                 <CheckRow
-                  key={c}
-                  label={c}
-                  count={countFor('category', c)}
-                  checked={categories.includes(c)}
-                  onChange={() => toggleFilter('categories', c)}
+                  key={category}
+                  label={category}
+                  count={countFor('bodyTypes', category)}
+                  checked={categories.includes(category)}
+                  onChange={() => toggleFilter('categories', category)}
                 />
               ))}
             </FilterSection>
 
-            {/* Combustible */}
             <FilterSection label="Combustible" defaultOpen={false}>
-              {allFuels.map(f => (
+              {allFuels.map((fuel) => (
                 <CheckRow
-                  key={f}
-                  label={f}
-                  count={countFor('fuel', f)}
-                  checked={fuels.includes(f)}
-                  onChange={() => toggleFilter('fuels', f)}
+                  key={fuel}
+                  label={fuel}
+                  count={countFor('fuelTypes', fuel)}
+                  checked={fuels.includes(fuel)}
+                  onChange={() => toggleFilter('fuels', fuel)}
                 />
               ))}
             </FilterSection>
 
-            {/* Reset */}
-            {(brands.length || categories.length || fuels.length || statusFilter !== 'Todos' || maxPrice) > 0 && (
+            {(searchQuery || brands.length || categories.length || fuels.length || statusFilter !== 'Todos' || maxPrice) > 0 && (
               <button
                 onClick={resetFilters}
                 className="mt-4 w-full font-body text-xs text-neutral-500 hover:text-neutral-900 underline underline-offset-2 transition-colors"
               >
-                Limpiar filtros
+                Limpiar búsqueda y filtros
               </button>
             )}
           </aside>
 
-          {/* ── GRID ── */}
           <div className="flex-1 min-w-0">
             <div className="flex flex-col gap-3 mb-6">
               <p className="font-body text-sm text-neutral-500">
-                {filtered.length} vehículo{filtered.length !== 1 ? 's' : ''} disponible{filtered.length !== 1 ? 's' : ''}
+                {loading
+                  ? 'Cargando inventario...'
+                  : `${meta.total} vehículo${meta.total !== 1 ? 's' : ''} disponible${meta.total !== 1 ? 's' : ''}`}
               </p>
 
               {activeFilters.length > 0 && (
@@ -309,18 +374,31 @@ export default function Inventario() {
                     onClick={resetFilters}
                     className="font-body text-xs text-neutral-500 hover:text-neutral-900 underline underline-offset-2 transition-colors"
                   >
-                    Limpiar filtros
+                    Limpiar búsqueda y filtros
                   </button>
                 </div>
               )}
             </div>
 
-            {filtered.length > 0 ? (
+            {!loading && !error && vehicles.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {filtered.map((v, i) => (
-                  <VehicleCard key={v.id} vehicle={v} index={i} />
+                {vehicles.map((vehicle, index) => (
+                  <VehicleCard key={vehicle.slug ?? vehicle.id} vehicle={vehicle} index={index} />
                 ))}
               </div>
+            ) : loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {[0, 1, 2, 3, 4, 5].map((item) => (
+                  <div key={item} className="border border-neutral-200 bg-neutral-50 animate-pulse min-h-[380px]" />
+                ))}
+              </div>
+            ) : error ? (
+              <StatePanel
+                title="Inventario no disponible"
+                message={error}
+                actionLabel="Reintentar"
+                onAction={() => window.location.reload()}
+              />
             ) : (
               <div className="flex flex-col items-center justify-center py-32 text-center">
                 <p className="font-body text-neutral-400 text-sm mb-2">Sin vehículos con esos filtros.</p>
@@ -335,7 +413,6 @@ export default function Inventario() {
           </div>
         </div>
 
-        {/* ── CTA bottom ── */}
         <div className="border-t border-neutral-200 py-16 text-center">
           <p className="font-body text-neutral-500 text-sm mb-2">¿No encuentras el vehículo que buscas?</p>
           <h3 className="font-body text-2xl font-semibold text-neutral-900 mb-6">

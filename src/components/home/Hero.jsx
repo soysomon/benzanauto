@@ -1,7 +1,7 @@
 import { motion, useSpring, useTransform, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { vehicles } from '../../data/vehicles'
+import { listPublicVehicles } from '../../lib/publicApi'
 import BrandLogo from '../ui/BrandLogo'
 
 const DOP_RATE = 59.5
@@ -309,25 +309,24 @@ const CoupeIcon = () => (
 
 const vehicleTypes = [
   { id: null, label: 'Todos', Icon: null },
-  { id: 'Sedán', label: 'Sedán', Icon: SedanIcon },
-  { id: 'Compacto', label: 'Compacto', Icon: HatchbackIcon },
+  { id: 'Sedan', label: 'Sedán', Icon: SedanIcon },
+  { id: 'Hatchback', label: 'Compacto', Icon: HatchbackIcon },
   { id: 'SUV', label: 'Jeepeta', Icon: SuvIcon },
   { id: 'Pickup', label: 'Camioneta', Icon: PickupIcon },
-  { id: 'Coupé', label: 'Coupé', Icon: CoupeIcon },
+  { id: 'Coupe', label: 'Coupé', Icon: CoupeIcon },
 ]
-
-function getBrands() {
-  const map = {}
-  vehicles.forEach(v => { map[v.brand] = (map[v.brand] || 0) + 1 })
-  return Object.entries(map).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
-}
 
 /* ── Filter card ── */
 function FilterCard() {
   const navigate = useNavigate()
-  const brands = useMemo(() => getBrands(), [])
   const barRef = useRef(null)
   const brandScrollerRef = useRef(null)
+  const [inventorySummary, setInventorySummary] = useState({
+    total: 0,
+    brands: [],
+  })
+  const [matchCount, setMatchCount] = useState(0)
+  const [summaryLoading, setSummaryLoading] = useState(true)
 
   const [selectedBrand, setSelectedBrand] = useState(null)
   const [selectedType, setSelectedType] = useState(null)
@@ -342,14 +341,7 @@ function FilterCard() {
   const cfg = SLIDER_CFG[currency]
   const priceActive = maxPrice < cfg.noFilter
   const maxPriceUSD = currency === 'DOP' ? maxPrice / DOP_RATE : maxPrice
-
-  const matchCount = useMemo(() => {
-    let r = vehicles
-    if (selectedBrand) r = r.filter(v => v.brand === selectedBrand)
-    if (selectedType) r = r.filter(v => v.category === selectedType)
-    if (priceActive) r = r.filter(v => v.price <= maxPriceUSD)
-    return r.length
-  }, [selectedBrand, selectedType, maxPriceUSD, priceActive])
+  const brands = useMemo(() => inventorySummary.brands, [inventorySummary.brands])
 
   const handleApply = () => {
     const p = new URLSearchParams()
@@ -418,6 +410,60 @@ function FilterCard() {
     return () => window.removeEventListener('resize', handleResize)
   }, [openPanel, selectedBrand, updateBrandScrollerState])
 
+  useEffect(() => {
+    let ignore = false
+
+    async function loadBaseSummary() {
+      try {
+        const response = await listPublicVehicles({ limit: 1 })
+        if (ignore) return
+
+        setInventorySummary({
+          total: response.meta.total,
+          brands: response.facets.brands,
+        })
+      } catch {
+        if (!ignore) {
+          setInventorySummary({ total: 0, brands: [] })
+        }
+      }
+    }
+
+    loadBaseSummary()
+    return () => { ignore = true }
+  }, [])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadMatchCount() {
+      try {
+        setSummaryLoading(true)
+        const response = await listPublicVehicles({
+          limit: 1,
+          marca: selectedBrand ? [selectedBrand] : undefined,
+          tipo: selectedType ? [selectedType] : undefined,
+          precioMax: priceActive ? Math.round(maxPriceUSD) : undefined,
+        })
+
+        if (!ignore) {
+          setMatchCount(response.meta.total)
+        }
+      } catch {
+        if (!ignore) {
+          setMatchCount(0)
+        }
+      } finally {
+        if (!ignore) {
+          setSummaryLoading(false)
+        }
+      }
+    }
+
+    loadMatchCount()
+    return () => { ignore = true }
+  }, [maxPriceUSD, priceActive, selectedBrand, selectedType])
+
   const selectedTypeObj = vehicleTypes.find(t => t.id === selectedType)
 
   return (
@@ -480,28 +526,28 @@ function FilterCard() {
                 >
                   <span className="truncate">Todas</span>
                   <span className={`text-[10px] tabular-nums font-semibold ${!selectedBrand ? 'text-b-red' : 'text-neutral-300'}`}>
-                    {vehicles.length}
+                    {inventorySummary.total}
                   </span>
                 </button>
 
                 {brands.map((brand) => {
-                  const isActive = selectedBrand === brand.name
+                  const isActive = selectedBrand === brand.value
 
                   return (
                     <button
-                      key={brand.name}
+                      key={brand.value}
                       data-brand-active={isActive}
-                      onClick={() => { setSelectedBrand(brand.name); setOpenPanel(null) }}
+                      onClick={() => { setSelectedBrand(brand.value); setOpenPanel(null) }}
                       className={`snap-start flex-shrink-0 min-w-[150px] max-w-[180px] flex items-center gap-3 px-3.5 py-2 rounded-xl border transition-all duration-150 ${isActive
                         ? 'bg-b-red/10 border-b-red/40 text-neutral-900 shadow-[0_0_0_1px_rgba(220,38,38,0.04)]'
                         : 'border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-800 hover:bg-neutral-50'
                         }`}
                     >
                       <div className={`w-9 h-5 flex-shrink-0 ${isActive ? 'text-b-red' : 'text-neutral-500'}`}>
-                        <BrandLogo brand={brand.name} className="w-full h-full" />
+                        <BrandLogo brand={brand.value} className="w-full h-full" />
                       </div>
                       <div className="min-w-0 flex-1 text-left">
-                        <span className="font-body text-xs font-medium truncate block">{brand.name}</span>
+                        <span className="font-body text-xs font-medium truncate block">{brand.value}</span>
                       </div>
                       <span className={`font-body text-[10px] tabular-nums flex-shrink-0 ${isActive ? 'text-b-red' : 'text-neutral-300'}`}>
                         {brand.count}
@@ -689,7 +735,7 @@ function FilterCard() {
         >
           <span className="font-body text-[9px] uppercase tracking-[0.24em] text-white/70 mb-1">Ver</span>
           <div className="flex items-center gap-1.5">
-            <span className="font-display text-[26px] text-white leading-none">{matchCount}</span>
+            <span className="font-display text-[26px] text-white leading-none">{summaryLoading ? '…' : matchCount}</span>
             <svg
               className="w-3.5 h-3.5 text-white/80 group-hover:translate-x-0.5 transition-transform"
               fill="none" stroke="currentColor" viewBox="0 0 24 24"

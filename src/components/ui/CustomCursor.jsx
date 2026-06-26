@@ -30,6 +30,21 @@ export default function CustomCursor() {
   }, [])
 
   useEffect(() => {
+    const className = 'has-custom-cursor'
+
+    if (!enabled) {
+      document.body.classList.remove(className)
+      return undefined
+    }
+
+    document.body.classList.add(className)
+
+    return () => {
+      document.body.classList.remove(className)
+    }
+  }, [enabled])
+
+  useEffect(() => {
     if (!enabled) return undefined
 
     const onMove = (e) => {

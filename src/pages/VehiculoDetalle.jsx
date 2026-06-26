@@ -1,46 +1,136 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link, Navigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { vehicles } from '../data/vehicles'
 import VehicleCard from '../components/ui/VehicleCard'
 import Badge from '../components/ui/Badge'
+import StatePanel from '../components/ui/StatePanel'
 import { COMPANY, buildPhoneUrl, buildWhatsAppUrl } from '../../shared/company.js'
+import { getVehicleDetail, listPublicVehicles, trackVehicleContact } from '../lib/publicApi'
 
 export default function VehiculoDetalle() {
-  const { id } = useParams()
-  const vehicle = vehicles.find(v => v.id === Number(id))
-  const [activeImage, setActiveImage]   = useState(0)
-  const [lightbox,    setLightbox]      = useState(false)
-  const [lightboxIdx, setLightboxIdx]   = useState(0)
+  const { slug } = useParams()
+  const [vehicle, setVehicle] = useState(null)
+  const [related, setRelated] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [activeImage, setActiveImage] = useState(0)
+  const [lightbox, setLightbox] = useState(false)
+  const [lightboxIdx, setLightboxIdx] = useState(0)
 
-  if (!vehicle) return <Navigate to="/inventario" replace />
+  useEffect(() => {
+    let ignore = false
 
-  const related = vehicles.filter(v => v.id !== vehicle.id && (v.category === vehicle.category || v.brand === vehicle.brand)).slice(0, 3)
+    async function loadVehicle() {
+      try {
+        setLoading(true)
+        setError('')
 
-  const formatPrice = (price) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price)
+        const detail = await getVehicleDetail(slug)
+        if (ignore) return
 
-  const gallery = vehicle.gallery?.length ? vehicle.gallery : [vehicle.image]
+        setVehicle(detail)
+        setActiveImage(0)
+        setLightbox(false)
+        setLightboxIdx(0)
 
-  const openLightbox = (idx) => { setLightboxIdx(idx); setLightbox(true) }
+        const relatedResponse = await listPublicVehicles({
+          brand: [detail.brand],
+          limit: 4,
+        })
+
+        if (!ignore) {
+          setRelated(
+            relatedResponse.data
+              .filter((item) => item.slug !== detail.slug)
+              .slice(0, 3),
+          )
+        }
+      } catch (loadError) {
+        if (!ignore) {
+          setError(loadError.message ?? 'No se pudo cargar este vehículo.')
+          setVehicle(null)
+          setRelated([])
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadVehicle()
+    return () => { ignore = true }
+  }, [slug])
+
+  const formatPrice = (price, currency = 'USD') =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(price)
+
+  const gallery = vehicle?.gallery?.length ? vehicle.gallery : vehicle?.image ? [vehicle.image] : []
+  const contactIdentifier = vehicle?.slug ?? vehicle?.backendId ?? vehicle?.legacyId ?? vehicle?.id ?? null
+
+  const registerContact = () => {
+    if (!contactIdentifier) return
+    void trackVehicleContact(contactIdentifier).catch(() => {})
+  }
+
+  const openLightbox = (index) => { setLightboxIdx(index); setLightbox(true) }
   const closeLightbox = () => setLightbox(false)
-  const lbPrev = useCallback(() => setLightboxIdx(i => (i - 1 + gallery.length) % gallery.length), [gallery.length])
-  const lbNext = useCallback(() => setLightboxIdx(i => (i + 1) % gallery.length), [gallery.length])
+  const lbPrev = useCallback(() => setLightboxIdx((index) => (index - 1 + gallery.length) % gallery.length), [gallery.length])
+  const lbNext = useCallback(() => setLightboxIdx((index) => (index + 1) % gallery.length), [gallery.length])
 
   useEffect(() => {
     if (!lightbox) return
-    const onKey = (e) => {
-      if (e.key === 'Escape')     closeLightbox()
-      if (e.key === 'ArrowLeft')  lbPrev()
-      if (e.key === 'ArrowRight') lbNext()
+
+    const onKey = (event) => {
+      if (event.key === 'Escape') closeLightbox()
+      if (event.key === 'ArrowLeft') lbPrev()
+      if (event.key === 'ArrowRight') lbNext()
     }
+
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [lightbox, lbPrev, lbNext])
+  }, [lbNext, lbPrev, lightbox])
+
+  if (loading) {
+    return (
+      <div className="bg-white min-h-screen pt-24">
+        <div className="container-pad py-10">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
+            <div className="lg:col-span-3">
+              <div className="aspect-[16/10] bg-neutral-100 animate-pulse" />
+            </div>
+            <div className="lg:col-span-2 space-y-4">
+              <div className="h-8 w-2/3 bg-neutral-100 animate-pulse" />
+              <div className="h-20 bg-neutral-100 animate-pulse" />
+              <div className="grid grid-cols-2 gap-2">
+                {[0, 1, 2, 3].map((item) => (
+                  <div key={item} className="h-20 bg-neutral-100 animate-pulse" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!vehicle) {
+    return (
+      <div className="bg-white min-h-screen pt-24">
+        <div className="container-pad py-16">
+          <StatePanel
+            title="Vehículo no disponible"
+            message={error || 'No encontramos la unidad que intentas ver o ya no está publicada.'}
+            actionLabel="Volver al inventario"
+            onAction={() => { window.location.href = '/inventario' }}
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
-      {/* Back nav */}
       <div className="pt-24 pb-4 bg-white border-b border-neutral-200">
         <div className="container-pad">
           <Link
@@ -58,8 +148,6 @@ export default function VehiculoDetalle() {
       <section className="bg-white py-12 lg:py-16">
         <div className="container-pad">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
-
-            {/* Gallery — left 3 cols */}
             <div className="lg:col-span-3 flex flex-col gap-3">
               <motion.div
                 initial={{ opacity: 0, scale: 1.02 }}
@@ -75,7 +163,6 @@ export default function VehiculoDetalle() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/20 to-transparent pointer-events-none" />
 
-                {/* Zoom hint */}
                 <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white/80 backdrop-blur-sm px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                   <svg className="w-3.5 h-3.5 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
@@ -83,31 +170,29 @@ export default function VehiculoDetalle() {
                   <span className="font-body text-[10px] text-neutral-700 uppercase tracking-wider">Ampliar</span>
                 </div>
 
-                {/* Status badge */}
                 <div className="absolute top-4 left-4 flex gap-2">
-                  <Badge variant={vehicle.status === 'Nuevo' ? 'red' : 'outline'}>{vehicle.status}</Badge>
+                  <Badge variant={vehicle.condition === 'Nuevo' ? 'red' : 'outline'}>{vehicle.condition}</Badge>
                   {vehicle.badge && <Badge variant="default">{vehicle.badge}</Badge>}
                 </div>
               </motion.div>
 
               {gallery.length > 1 && (
                 <div className="flex gap-2">
-                  {gallery.map((img, i) => (
+                  {gallery.map((image, index) => (
                     <button
-                      key={i}
-                      onClick={() => { setActiveImage(i); openLightbox(i) }}
+                      key={image}
+                      onClick={() => { setActiveImage(index); openLightbox(index) }}
                       className={`relative flex-1 aspect-[16/10] overflow-hidden border-2 transition-colors cursor-zoom-in ${
-                        i === activeImage ? 'border-b-red' : 'border-transparent opacity-50 hover:opacity-75'
+                        index === activeImage ? 'border-b-red' : 'border-transparent opacity-50 hover:opacity-75'
                       }`}
                     >
-                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      <img src={image} alt="" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Info — right 2 cols */}
             <div className="lg:col-span-2">
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
@@ -115,7 +200,6 @@ export default function VehiculoDetalle() {
                 transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                 className="sticky top-24 flex flex-col gap-6"
               >
-                {/* Header */}
                 <div>
                   <p className="font-body text-xs text-neutral-400 uppercase tracking-widest mb-1">{vehicle.brand} · {vehicle.year}</p>
                   <h1 className="font-heading font-800 text-[clamp(28px,3vw,44px)] text-neutral-900 leading-none tracking-tight mb-2">
@@ -124,16 +208,14 @@ export default function VehiculoDetalle() {
                   <p className="font-body text-neutral-500 text-sm leading-relaxed">{vehicle.description}</p>
                 </div>
 
-                {/* Price */}
                 <div className="bg-neutral-50 border border-neutral-200 p-5">
                   <p className="font-body text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Precio</p>
-                  <p className="font-display text-5xl text-neutral-900 tracking-wider">{formatPrice(vehicle.price)}</p>
-                  {vehicle.status === 'Nuevo' && (
+                  <p className="font-display text-5xl text-neutral-900 tracking-wider">{formatPrice(vehicle.price, vehicle.currency)}</p>
+                  {vehicle.condition === 'Nuevo' && (
                     <p className="font-body text-xs text-neutral-400 mt-1">* Precio incluye todos los impuestos</p>
                   )}
                 </div>
 
-                {/* Key specs grid */}
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: 'Transmisión', value: vehicle.transmission },
@@ -150,27 +232,29 @@ export default function VehiculoDetalle() {
                   ))}
                 </div>
 
-                {/* CTAs */}
                 <div className="flex flex-col gap-3">
                   <a
-                    href={buildWhatsAppUrl(`Hola, me interesa el ${vehicle.brand} ${vehicle.model} ${vehicle.year} (ID: ${vehicle.id})`)}
+                    href={buildWhatsAppUrl(`Hola, me interesa el ${vehicle.brand} ${vehicle.model} ${vehicle.year} (${vehicle.slug})`)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={registerContact}
                     className="inline-flex items-center justify-center gap-2.5 bg-b-red hover:bg-b-red-hover text-white font-body font-semibold text-sm uppercase tracking-widest py-4 transition-colors duration-200"
                   >
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                     </svg>
                     Consultar por WhatsApp
                   </a>
                   <Link
                     to="/contacto"
+                    onClick={registerContact}
                     className="inline-flex items-center justify-center gap-2 border border-neutral-300 hover:border-neutral-900 text-neutral-900 font-body font-semibold text-sm uppercase tracking-widest py-4 transition-all duration-200 hover:bg-neutral-50"
                   >
                     Solicitar Cotización
                   </Link>
                   <a
                     href={buildPhoneUrl()}
+                    onClick={registerContact}
                     className="inline-flex items-center justify-center gap-2 text-neutral-400 hover:text-neutral-900 font-body text-sm transition-colors duration-200 py-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -185,8 +269,7 @@ export default function VehiculoDetalle() {
         </div>
       </section>
 
-      {/* Full specs */}
-      {vehicle.specs && (
+      {vehicle.specs && Object.keys(vehicle.specs).length > 0 && (
         <section className="bg-neutral-50 border-t border-neutral-200 py-16">
           <div className="container-pad">
             <div className="flex items-center gap-3 mb-8">
@@ -194,10 +277,10 @@ export default function VehiculoDetalle() {
               <h2 className="font-heading text-xl font-700 text-neutral-900 uppercase tracking-widest">Ficha Técnica</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-px bg-neutral-200">
-              {Object.entries(vehicle.specs).map(([key, val]) => (
+              {Object.entries(vehicle.specs).map(([key, value]) => (
                 <div key={key} className="bg-neutral-50 p-5">
                   <p className="font-body text-[10px] text-neutral-400 uppercase tracking-widest mb-1 capitalize">{key}</p>
-                  <p className="font-body text-neutral-900 text-sm font-medium">{val}</p>
+                  <p className="font-body text-neutral-900 text-sm font-medium">{value}</p>
                 </div>
               ))}
             </div>
@@ -205,7 +288,6 @@ export default function VehiculoDetalle() {
         </section>
       )}
 
-      {/* Related */}
       {related.length > 0 && (
         <section className="bg-white border-t border-neutral-200 py-16">
           <div className="container-pad">
@@ -214,15 +296,14 @@ export default function VehiculoDetalle() {
               <h2 className="font-heading text-xl font-700 text-neutral-900 uppercase tracking-widest">También te puede interesar</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {related.map((v, i) => (
-                <VehicleCard key={v.id} vehicle={v} index={i} />
+              {related.map((relatedVehicle, index) => (
+                <VehicleCard key={relatedVehicle.slug ?? relatedVehicle.id} vehicle={relatedVehicle} index={index} />
               ))}
             </div>
           </div>
         </section>
       )}
 
-      {/* ── Lightbox ── */}
       <AnimatePresence>
         {lightbox && (
           <motion.div
@@ -232,13 +313,11 @@ export default function VehiculoDetalle() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {/* Backdrop */}
             <div
               className="absolute inset-0 bg-black/92 backdrop-blur-sm"
               onClick={closeLightbox}
             />
 
-            {/* Image */}
             <AnimatePresence mode="wait">
               <motion.img
                 key={lightboxIdx}
@@ -253,20 +332,18 @@ export default function VehiculoDetalle() {
               />
             </AnimatePresence>
 
-            {/* Counter */}
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
-              {gallery.map((_, i) => (
+              {gallery.map((_, index) => (
                 <button
-                  key={i}
-                  onClick={() => setLightboxIdx(i)}
+                  key={index}
+                  onClick={() => setLightboxIdx(index)}
                   className={`rounded-full transition-all duration-200 ${
-                    i === lightboxIdx ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'
+                    index === lightboxIdx ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'
                   }`}
                 />
               ))}
             </div>
 
-            {/* Close */}
             <button
               onClick={closeLightbox}
               className="absolute top-5 right-5 z-20 w-10 h-10 flex items-center justify-center text-white/70 hover:text-white transition-colors"
@@ -277,7 +354,6 @@ export default function VehiculoDetalle() {
               </svg>
             </button>
 
-            {/* Prev arrow */}
             {gallery.length > 1 && (
               <button
                 onClick={lbPrev}
@@ -290,7 +366,6 @@ export default function VehiculoDetalle() {
               </button>
             )}
 
-            {/* Next arrow */}
             {gallery.length > 1 && (
               <button
                 onClick={lbNext}
@@ -303,7 +378,6 @@ export default function VehiculoDetalle() {
               </button>
             )}
 
-            {/* Label */}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 z-20">
               <p className="font-body text-xs text-white/60 uppercase tracking-widest">
                 {vehicle.brand} {vehicle.model} · {lightboxIdx + 1} / {gallery.length}
