@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { vehicles } from '../../data/vehicles'
-
-const showcase = vehicles.slice(0, 4)
+import { getFeaturedVehicles } from '../../lib/publicApi'
+import StatePanel from '../ui/StatePanel'
 
 function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
   const navigate = useNavigate()
@@ -11,8 +10,8 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
     size === 'hero'
       ? 'text-[clamp(32px,4vw,56px)]'
       : size === 'md'
-      ? 'text-[clamp(24px,2.5vw,38px)]'
-      : 'text-[clamp(20px,1.8vw,28px)]'
+        ? 'text-[clamp(24px,2.5vw,38px)]'
+        : 'text-[clamp(20px,1.8vw,28px)]'
 
   return (
     <motion.div
@@ -20,21 +19,18 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 0.7, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-      onClick={() => navigate(`/inventario`)}
+      onClick={() => navigate(`/vehiculo/${vehicle.slug ?? vehicle.legacyId ?? vehicle.id}`)}
       className="relative w-full h-full overflow-hidden cursor-pointer group"
     >
-      {/* Image */}
       <img
         src={vehicle.image}
         alt={`${vehicle.brand} ${vehicle.model}`}
         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
       />
 
-      {/* Gradients */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
       <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-transparent" />
 
-      {/* Badge */}
       {vehicle.badge && (
         <div className="absolute top-4 left-4">
           <span className="font-body text-[10px] font-semibold uppercase tracking-[0.2em] text-white bg-b-red px-2.5 py-1">
@@ -43,7 +39,6 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
         </div>
       )}
 
-      {/* Info overlay */}
       <div className="absolute bottom-0 left-0 right-0 p-5 lg:p-6">
         <p className="font-body text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50 mb-1">
           {vehicle.brand} · {vehicle.year}
@@ -53,7 +48,6 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
         </h3>
         <p className="font-body text-sm text-white/50">{vehicle.category}</p>
 
-        {/* Price + CTA (visible on hover) */}
         <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300">
           <span className="font-display text-white tracking-wider text-lg">
             ${vehicle.price.toLocaleString()}
@@ -71,23 +65,100 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
 }
 
 export default function FeaturedVehicles() {
+  const [showcase, setShowcase] = useState([])
   const [activeTab, setActiveTab] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadFeaturedVehicles() {
+      try {
+        setLoading(true)
+        setError('')
+        const data = await getFeaturedVehicles()
+        if (!ignore) {
+          setShowcase(data.slice(0, 4))
+        }
+      } catch (loadError) {
+        if (!ignore) {
+          setError(loadError.message ?? 'No se pudieron cargar los vehículos destacados.')
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadFeaturedVehicles()
+    return () => { ignore = true }
+  }, [])
 
   const tabs = [
-    { id: null,          label: 'Todos los modelos' },
-    ...showcase.map(v => ({ id: v.id, label: v.model })),
+    { id: null, label: 'Todos los modelos' },
+    ...showcase.map((vehicle) => ({ id: vehicle.slug ?? vehicle.id, label: vehicle.model })),
   ]
 
   const handleTab = (tab) => {
     setActiveTab(tab.id)
+
     if (tab.id === null) {
       window.location.href = '/inventario'
+      return
+    }
+
+    const selectedVehicle = showcase.find((vehicle) => (vehicle.slug ?? vehicle.id) === tab.id)
+    if (selectedVehicle) {
+      window.location.href = `/vehiculo/${selectedVehicle.slug ?? selectedVehicle.legacyId ?? selectedVehicle.id}`
     }
   }
 
+  if (loading) {
+    return (
+      <section className="bg-white border-t border-neutral-200">
+        <div className="container-pad pt-16 pb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="block w-8 h-px bg-b-red" />
+            <span className="font-body text-xs font-semibold uppercase tracking-[0.22em] text-b-red">
+              Vehiculos Destacados
+            </span>
+          </div>
+        </div>
+        <div className="hidden lg:grid w-full" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '340px 260px', gap: '2px' }}>
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="bg-neutral-100 animate-pulse min-h-[180px]" />
+          ))}
+        </div>
+        <div className="lg:hidden grid grid-cols-2 gap-0.5">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className={`bg-neutral-100 animate-pulse ${item === 0 ? 'col-span-2 h-64' : 'h-48'}`} />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section className="bg-white border-t border-neutral-200">
+        <div className="container-pad py-16">
+          <StatePanel
+            title="Destacados no disponibles"
+            message={error}
+            actionLabel="Ver inventario"
+            onAction={() => { window.location.href = '/inventario' }}
+          />
+        </div>
+      </section>
+    )
+  }
+
+  if (!showcase.length) return null
+
   return (
     <section className="bg-white border-t border-neutral-200">
-      {/* Section label */}
       <div className="container-pad pt-16 pb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="block w-8 h-px bg-b-red" />
@@ -106,42 +177,51 @@ export default function FeaturedVehicles() {
         </Link>
       </div>
 
-      {/* Bento grid — desktop */}
-      <div className="hidden lg:grid w-full" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '340px 260px', gap: '2px' }}>
-        <div style={{ gridColumn: '1', gridRow: '1 / 3' }}>
-          <VehicleCell vehicle={showcase[0]} size="hero" index={0} />
-        </div>
-        <div style={{ gridColumn: '2', gridRow: '1' }}>
-          <VehicleCell vehicle={showcase[1]} size="md" index={1} />
-        </div>
-        <div style={{ gridColumn: '2', gridRow: '2', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px' }}>
-          <VehicleCell vehicle={showcase[2]} size="sm" index={2} />
-          <VehicleCell vehicle={showcase[3]} size="sm" index={3} />
-        </div>
-      </div>
-
-      {/* Grid — mobile/tablet */}
-      <div className="lg:hidden grid grid-cols-2 gap-0.5">
-        {showcase.map((v, i) => (
-          <div key={v.id} className={`relative ${i === 0 ? 'col-span-2 h-64' : 'h-48'}`}>
-            <VehicleCell vehicle={v} size={i === 0 ? 'md' : 'sm'} index={i} />
+      {showcase.length >= 4 ? (
+        <>
+          <div className="hidden lg:grid w-full" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '340px 260px', gap: '2px' }}>
+            <div style={{ gridColumn: '1', gridRow: '1 / 3' }}>
+              <VehicleCell vehicle={showcase[0]} size="hero" index={0} />
+            </div>
+            <div style={{ gridColumn: '2', gridRow: '1' }}>
+              <VehicleCell vehicle={showcase[1]} size="md" index={1} />
+            </div>
+            <div style={{ gridColumn: '2', gridRow: '2', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px' }}>
+              <VehicleCell vehicle={showcase[2]} size="sm" index={2} />
+              <VehicleCell vehicle={showcase[3]} size="sm" index={3} />
+            </div>
           </div>
-        ))}
-      </div>
 
-      {/* Tab bar */}
+          <div className="lg:hidden grid grid-cols-2 gap-0.5">
+            {showcase.map((vehicle, index) => (
+              <div key={vehicle.slug ?? vehicle.id} className={`relative ${index === 0 ? 'col-span-2 h-64' : 'h-48'}`}>
+                <VehicleCell vehicle={vehicle} size={index === 0 ? 'md' : 'sm'} index={index} />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="container-pad grid grid-cols-1 md:grid-cols-2 gap-3 pb-12">
+          {showcase.map((vehicle, index) => (
+            <div key={vehicle.slug ?? vehicle.id} className="h-64">
+              <VehicleCell vehicle={vehicle} size={index === 0 ? 'md' : 'sm'} index={index} />
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
         className="w-full border-t border-neutral-200"
         style={{ background: '#f9f9f9' }}
       >
         <div className="container-pad">
           <div className="flex items-center gap-0 overflow-x-auto scrollbar-none">
-            {tabs.map((tab, i) => (
+            {tabs.map((tab, index) => (
               <button
                 key={tab.label}
                 onClick={() => handleTab(tab)}
                 className={`relative flex-shrink-0 font-body text-sm py-5 pr-8 transition-colors duration-200 whitespace-nowrap ${
-                  i === 0 ? 'pr-10' : ''
+                  index === 0 ? 'pr-10' : ''
                 } ${
                   (activeTab === tab.id && tab.id !== null) || (tab.id === null && activeTab === null)
                     ? 'text-neutral-900 font-semibold'

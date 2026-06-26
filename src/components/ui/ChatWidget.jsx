@@ -35,9 +35,11 @@ function formatPrice(price) {
 }
 
 function VehicleResultCard({ vehicle, onClick }) {
+  const vehicleIdentifier = vehicle.slug ?? vehicle.legacyId ?? vehicle.id
+
   return (
     <Link
-      to={`/vehiculo/${vehicle.id}`}
+      to={`/vehiculo/${vehicleIdentifier}`}
       onClick={onClick}
       className="flex items-center gap-3 border border-neutral-200 bg-white p-2.5 hover:border-neutral-900 transition-colors"
       style={{ borderRadius: 12 }}

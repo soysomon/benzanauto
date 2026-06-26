@@ -17,12 +17,13 @@
   }
 
   @media (hover: hover) and (pointer: fine) {
-    body {
+    body.has-custom-cursor {
       cursor: none;
     }
 
-    /* hide native cursor everywhere only on devices that have one */
-    *, *::before, *::after {
+    body.has-custom-cursor *,
+    body.has-custom-cursor *::before,
+    body.has-custom-cursor *::after {
       cursor: none !important;
     }
   }

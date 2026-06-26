@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Badge from './Badge'
 import { buildWhatsAppUrl } from '../../../shared/company.js'
+import { trackVehicleContact } from '../../lib/publicApi'
 
 function SpecPill({ label }) {
   return (
@@ -16,9 +17,15 @@ export default function VehicleCard({ vehicle, index = 0 }) {
   const formatPrice = (price) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price)
   const vehicleLabel = `${vehicle.brand} ${vehicle.model} ${vehicle.year}`
+  const vehicleIdentifier = vehicle.slug ?? vehicle.legacyId ?? vehicle.id
+  const contactIdentifier = vehicle.slug ?? vehicle.backendId ?? vehicle.legacyId ?? vehicle.id
 
   const goToDetails = () => {
-    navigate(`/vehiculo/${vehicle.id}`)
+    navigate(`/vehiculo/${vehicleIdentifier}`)
+  }
+
+  const registerContact = () => {
+    void trackVehicleContact(contactIdentifier).catch(() => {})
   }
 
   const handleKeyDown = (event) => {
@@ -97,7 +104,10 @@ export default function VehicleCard({ vehicle, index = 0 }) {
               href={buildWhatsAppUrl(`Hola, me interesa el ${vehicleLabel}`)}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                registerContact()
+              }}
               className="flex items-center justify-center w-9 h-9 bg-[#25D366]/10 border border-[#25D366]/30 hover:bg-[#25D366]/20 transition-colors"
               aria-label="WhatsApp"
             >

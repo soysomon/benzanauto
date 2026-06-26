@@ -13,6 +13,8 @@ import BarGrill from './pages/BarGrill'
 import BombaGasolina from './pages/BombaGasolina'
 import Nosotros from './pages/Nosotros'
 import Contacto from './pages/Contacto'
+import AdminLoginPage from './pages/AdminLoginPage'
+import AdminDashboardPage from './pages/AdminDashboardPage'
 
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
@@ -34,43 +36,59 @@ function ScrollToTop() {
 
 function AnimatedRoutes() {
   const location = useLocation()
+  const isAdminRoute = location.pathname.startsWith('/admin')
 
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={location.pathname}
-        initial="initial"
-        animate="in"
-        exit="out"
-        variants={pageVariants}
-        transition={pageTransition}
-      >
-        <Routes location={location}>
-          <Route path="/" element={<Home />} />
-          <Route path="/inventario" element={<Inventario />} />
-          <Route path="/vehiculo/:id" element={<VehiculoDetalle />} />
-          <Route path="/taller" element={<Taller />} />
-          <Route path="/bar-grill" element={<BarGrill />} />
-          <Route path="/bomba-gasolina" element={<BombaGasolina />} />
-          <Route path="/nosotros" element={<Nosotros />} />
-          <Route path="/contacto" element={<Contacto />} />
-        </Routes>
-      </motion.div>
-    </AnimatePresence>
+    <>
+      {!isAdminRoute && <Navbar />}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={location.pathname}
+          initial="initial"
+          animate="in"
+          exit="out"
+          variants={pageVariants}
+          transition={pageTransition}
+        >
+          <Routes location={location}>
+            <Route path="/" element={<Home />} />
+            <Route path="/inventario" element={<Inventario />} />
+            <Route path="/vehiculo/:slug" element={<VehiculoDetalle />} />
+            <Route path="/taller" element={<Taller />} />
+            <Route path="/bar-grill" element={<BarGrill />} />
+            <Route path="/bomba-gasolina" element={<BombaGasolina />} />
+            <Route path="/nosotros" element={<Nosotros />} />
+            <Route path="/contacto" element={<Contacto />} />
+            <Route path="/admin-login" element={<AdminLoginPage />} />
+            <Route path="/admin" element={<AdminDashboardPage />} />
+          </Routes>
+        </motion.div>
+      </AnimatePresence>
+      {!isAdminRoute && <Footer />}
+      {!isAdminRoute && <ChatWidget />}
+    </>
   )
 }
 
 export default function App() {
   return (
     <Router>
-      <CustomCursor />
+      <RouteAwareChrome />
+    </Router>
+  )
+}
+
+function RouteAwareChrome() {
+  const location = useLocation()
+  const isAdminRoute = location.pathname.startsWith('/admin')
+
+  return (
+    <>
+      {!isAdminRoute && <CustomCursor />}
       <ScrollToTop />
-      <Navbar />
       <main>
         <AnimatedRoutes />
       </main>
-      <Footer />
-      <ChatWidget />
-    </Router>
+    </>
   )
 }
