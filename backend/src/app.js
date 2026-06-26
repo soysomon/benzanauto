@@ -13,6 +13,7 @@ import adminAuthRoutes from './routes/admin/auth.routes.js'
 import adminUserRoutes from './routes/admin/user.routes.js'
 import adminVehicleRoutes from './routes/admin/vehicle.routes.js'
 import adminDashboardRoutes from './routes/admin/dashboard.routes.js'
+import { getDatabaseHealth } from './config/database.js'
 import { UPLOADS_ROOT } from './services/storage.service.js'
 
 export function createApp() {
@@ -36,10 +37,35 @@ export function createApp() {
   }))
 
   app.get('/health', (_req, res) => {
+    const database = getDatabaseHealth()
+
     res.json({
-      status: 'ok',
+      status: database.connected ? 'ok' : 'degraded',
       service: 'Benzan Auto Backend',
       timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+      database,
+    })
+  })
+
+  app.get('/ready', (_req, res) => {
+    const database = getDatabaseHealth()
+
+    if (!database.connected) {
+      return res.status(503).json({
+        status: 'not_ready',
+        service: 'Benzan Auto Backend',
+        timestamp: new Date().toISOString(),
+        database,
+      })
+    }
+
+    return res.json({
+      status: 'ready',
+      service: 'Benzan Auto Backend',
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+      database,
     })
   })
 
