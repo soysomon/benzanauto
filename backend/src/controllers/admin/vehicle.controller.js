@@ -6,6 +6,7 @@ import {
   listAdminVehicles,
   markVehicleAsSold,
   publishVehicle,
+  serializeAdminVehicle,
   unpublishVehicle,
   updateVehicle,
   updateVehicleFeatured,
@@ -82,7 +83,7 @@ export const uploadImages = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     message: 'Imagenes cargadas correctamente.',
-    vehicle,
+    vehicle: serializeAdminVehicle(vehicle),
   })
 })
 
@@ -90,7 +91,6 @@ export const destroyImage = asyncHandler(async (req, res) => {
   const vehicle = await removeVehicleImage(req.validated.params.id, req.validated.params.imageId)
   res.json({
     message: 'Imagen eliminada correctamente.',
-    vehicle,
+    vehicle: serializeAdminVehicle(vehicle),
   })
 })
-

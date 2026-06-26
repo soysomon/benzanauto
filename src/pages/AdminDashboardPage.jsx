@@ -211,6 +211,32 @@ function releasePendingUploads(items = []) {
   })
 }
 
+function normalizeVehicleSnapshot(vehicle) {
+  if (!vehicle || typeof vehicle !== 'object') return vehicle
+
+  const normalizedImages = Array.isArray(vehicle.images)
+    ? vehicle.images
+      .map((image, index) => ({
+        ...image,
+        id: image?.id ?? image?._id ?? null,
+        order: Number.isFinite(image?.order) ? image.order : index,
+      }))
+      .sort((left, right) => left.order - right.order)
+    : []
+
+  const normalizedVehicle = {
+    ...vehicle,
+    id: vehicle.id ?? vehicle._id ?? null,
+    images: normalizedImages,
+  }
+
+  if (!normalizedVehicle.mainImage) {
+    normalizedVehicle.mainImage = normalizedImages.find((image) => image.isMain)?.url ?? normalizedImages[0]?.url ?? ''
+  }
+
+  return normalizedVehicle
+}
+
 function normalizeChoice(value, options) {
   if (!value) return { choice: options[0], custom: '' }
   return options.includes(value)
@@ -1354,15 +1380,17 @@ export default function AdminDashboardPage() {
   }, [stats, statsLoading])
 
   const applyVehicleSnapshot = (vehicle, { syncForm = false } = {}) => {
-    setSelectedVehicle(vehicle)
+    const normalizedVehicle = normalizeVehicleSnapshot(vehicle)
+
+    setSelectedVehicle(normalizedVehicle)
     setVehicles((current) => {
-      const exists = current.some((item) => item.id === vehicle.id)
-      if (!exists) return [vehicle, ...current]
-      return current.map((item) => (item.id === vehicle.id ? vehicle : item))
+      const exists = current.some((item) => item.id === normalizedVehicle.id)
+      if (!exists) return [normalizedVehicle, ...current]
+      return current.map((item) => (item.id === normalizedVehicle.id ? normalizedVehicle : item))
     })
 
     if (syncForm) {
-      setForm(toFormState(vehicle))
+      setForm(toFormState(normalizedVehicle))
     }
   }
 
@@ -1410,8 +1438,9 @@ export default function AdminDashboardPage() {
       setActionError('')
       const response = await getAdminVehicle(token, vehicle.id)
       setEditorMode('edit')
-      setSelectedVehicle(response.vehicle)
-      setForm(toFormState(response.vehicle))
+      const normalizedVehicle = normalizeVehicleSnapshot(response.vehicle)
+      setSelectedVehicle(normalizedVehicle)
+      setForm(toFormState(normalizedVehicle))
       setAutoTitleEnabled(false)
       setFormErrors({})
       setWizardStepIndex(0)
@@ -1586,8 +1615,7 @@ export default function AdminDashboardPage() {
       if (selectedVehicle?.id) {
         const refreshed = await getAdminVehicle(token, selectedVehicle.id).catch(() => null)
         if (refreshed?.vehicle) {
-          setSelectedVehicle(refreshed.vehicle)
-          setForm(toFormState(refreshed.vehicle))
+          applyVehicleSnapshot(refreshed.vehicle, { syncForm: true })
         }
       }
       if (successMessage) setFeedback(successMessage)
