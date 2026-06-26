@@ -16,9 +16,15 @@ import {
   toggleAdminVehicleFeatured,
   unpublishAdminVehicle,
   updateAdminVehicle,
+  updateAdminVehicleImagePresentation,
   uploadAdminVehicleImages,
 } from '../lib/adminApi'
-import { clearStoredAdminToken, getStoredAdminToken } from '../lib/adminSession'
+import {
+  clearStoredAdminToken,
+  getStoredAdminToken,
+  getStoredAdminUser,
+  setStoredAdminUser,
+} from '../lib/adminSession'
 import {
   fetchVehicleEnrichment,
   fetchVehicleMakes,
@@ -30,14 +36,9 @@ const OTHER_OPTION = '__other__'
 
 const WIZARD_STEPS = [
   {
-    id: 'basic',
-    title: 'Datos básicos',
-    description: 'Lo necesario para reconocer el vehículo de inmediato.',
-  },
-  {
-    id: 'pricing',
-    title: 'Precio y condición',
-    description: 'Cuánto cuesta y en qué estado se encuentra.',
+    id: 'details',
+    title: 'Datos del vehículo',
+    description: 'Información clave, precio y condición en un solo paso.',
   },
   {
     id: 'features',
@@ -47,12 +48,17 @@ const WIZARD_STEPS = [
   {
     id: 'images',
     title: 'Imágenes',
-    description: 'Fotos claras para inspirar confianza.',
+    description: 'Sube varias fotos, elige portada y ordena la galería.',
+  },
+  {
+    id: 'preview',
+    title: 'Vista previa',
+    description: 'Revisa cómo se presentará antes de publicarlo.',
   },
   {
     id: 'publish',
-    title: 'Publicación',
-    description: 'Revisión final antes de guardar o publicar.',
+    title: 'Publicar',
+    description: 'Decide si lo dejas como borrador o si sale en vivo.',
   },
 ]
 
@@ -159,26 +165,16 @@ function suggestFeaturesForVehicle(brand, yearStr, bodyType) {
   return [...features].filter((f) => FEATURE_OPTIONS.includes(f))
 }
 
-const STATUS_OPTIONS = [
+const FINAL_ACTION_OPTIONS = [
   {
     value: 'draft',
     label: 'Guardar como borrador',
-    description: 'Útil si todavía faltan fotos o detalles.',
+    description: 'Ideal si aún faltan fotos o si quieres revisarlo luego.',
   },
   {
     value: 'published',
-    label: 'Publicar ahora',
+    label: 'Publicar vehículo',
     description: 'Listo para mostrarse en la web pública.',
-  },
-  {
-    value: 'sold',
-    label: 'Marcar como vendido',
-    description: 'Queda registrado como unidad vendida.',
-  },
-  {
-    value: 'archived',
-    label: 'Archivar',
-    description: 'Se guarda fuera de la operación diaria.',
   },
 ]
 
@@ -196,6 +192,23 @@ function createSpecRow(key = '', value = '') {
     key,
     value,
   }
+}
+
+function createPendingUpload(file) {
+  return {
+    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    name: file.name,
+    size: file.size,
+    previewUrl: URL.createObjectURL(file),
+  }
+}
+
+function releasePendingUploads(items = []) {
+  items.forEach((item) => {
+    if (item?.previewUrl) {
+      URL.revokeObjectURL(item.previewUrl)
+    }
+  })
 }
 
 function normalizeChoice(value, options) {
@@ -385,7 +398,7 @@ function getFieldErrorsForStep(stepId, form, selectedVehicle) {
   const fuelType = resolveChoiceValue(form.fuelType, form.customFuelType)
   const imageCount = Array.isArray(selectedVehicle?.images) ? selectedVehicle.images.length : 0
 
-  if (stepId === 'basic') {
+  if (stepId === 'details') {
     if (!title || title.length < 4) errors.title = 'Dale un nombre claro al anuncio.'
     if (!brand || brand.length < 2) errors.brandChoice = 'Selecciona o escribe una marca.'
     if (!form.model.trim()) errors.model = 'Escribe el modelo.'
@@ -393,9 +406,6 @@ function getFieldErrorsForStep(stepId, form, selectedVehicle) {
     if (!bodyType) errors.bodyType = 'Selecciona la categoría del vehículo.'
     if (!color || color.length < 2) errors.colorChoice = 'Selecciona un color.'
     if (!location || location.length < 2) errors.locationChoice = 'Selecciona la ubicación.'
-  }
-
-  if (stepId === 'pricing') {
     if (!form.price || Number.parseFloat(form.price) < 0) errors.price = 'Indica un precio válido.'
     if (!form.currency) errors.currency = 'Selecciona la moneda.'
     if (!form.condition) errors.condition = 'Selecciona la condición.'
@@ -416,10 +426,6 @@ function getFieldErrorsForStep(stepId, form, selectedVehicle) {
     }
   }
 
-  if (stepId === 'images' && !selectedVehicle?.id) {
-    errors.images = 'Primero guardaremos este vehículo como borrador para poder subir imágenes.'
-  }
-
   if (stepId === 'publish') {
     if (form.status === 'published' && imageCount === 0) {
       errors.publishImages = 'Antes de publicar, agrega por lo menos una imagen.'
@@ -438,10 +444,10 @@ const BACKEND_TO_FORM_KEY = {
 
 // Backend field → wizard step id (used to navigate when backend validation fails)
 const BACKEND_FIELD_STEP = {
-  title: 'basic', brand: 'basic', model: 'basic', year: 'basic',
-  bodyType: 'basic', color: 'basic', location: 'basic',
-  price: 'pricing', currency: 'pricing', condition: 'pricing',
-  mileage: 'pricing', transmission: 'pricing', fuelType: 'pricing', drivetrain: 'pricing',
+  title: 'details', brand: 'details', model: 'details', year: 'details',
+  bodyType: 'details', color: 'details', location: 'details',
+  price: 'details', currency: 'details', condition: 'details',
+  mileage: 'details', transmission: 'details', fuelType: 'details', drivetrain: 'details',
   description: 'features', specs: 'features', features: 'features',
   badge: 'publish', seoTitle: 'publish', seoDescription: 'publish', status: 'publish', featured: 'publish',
 }
@@ -562,6 +568,15 @@ function formatRelativeTime(value) {
   const days = Math.round(hours / 24)
   if (days < 30) return `Hace ${days} d`
   return formatDate(value)
+}
+
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function getStatusLabel(status) {
@@ -1084,8 +1099,12 @@ export default function AdminDashboardPage() {
   const navigate = useNavigate()
 
   const [token, setToken] = useState(() => getStoredAdminToken())
-  const [sessionLoading, setSessionLoading] = useState(true)
-  const [session, setSession] = useState(null)
+  const [sessionLoading, setSessionLoading] = useState(() => Boolean(getStoredAdminToken()) && !getStoredAdminUser())
+  const [sessionRefreshing, setSessionRefreshing] = useState(() => Boolean(getStoredAdminToken()))
+  const [session, setSession] = useState(() => {
+    const cachedUser = getStoredAdminUser()
+    return cachedUser ? { user: cachedUser, session: null } : null
+  })
   const [sessionError, setSessionError] = useState('')
 
   const [stats, setStats] = useState(null)
@@ -1101,6 +1120,7 @@ export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState('overview')
 
   const makesFetchedRef = useRef(false)
+  const pendingUploadsRef = useRef([])
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardStepIndex, setWizardStepIndex] = useState(0)
   const [editorMode, setEditorMode] = useState('create')
@@ -1110,6 +1130,9 @@ export default function AdminDashboardPage() {
   const [autoTitleEnabled, setAutoTitleEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [pendingUploads, setPendingUploads] = useState([])
+  const [imageActionKey, setImageActionKey] = useState('')
 
   const [enrichment, setEnrichment] = useState({
     makes: [],
@@ -1134,11 +1157,15 @@ export default function AdminDashboardPage() {
 
     async function loadSession() {
       try {
-        setSessionLoading(true)
+        setSessionRefreshing(true)
+        if (!session?.user) {
+          setSessionLoading(true)
+        }
         setSessionError('')
         const response = await getAdminMe(token)
         if (!ignore) {
           setSession(response)
+          setStoredAdminUser(response.user)
         }
       } catch (loadError) {
         if (!ignore) {
@@ -1151,6 +1178,7 @@ export default function AdminDashboardPage() {
       } finally {
         if (!ignore) {
           setSessionLoading(false)
+          setSessionRefreshing(false)
         }
       }
     }
@@ -1163,6 +1191,16 @@ export default function AdminDashboardPage() {
     document.body.style.overflow = wizardOpen ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [wizardOpen])
+
+  useEffect(() => {
+    pendingUploadsRef.current = pendingUploads
+  }, [pendingUploads])
+
+  useEffect(() => {
+    return () => {
+      releasePendingUploads(pendingUploadsRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!wizardOpen) return
@@ -1250,14 +1288,14 @@ export default function AdminDashboardPage() {
   }
 
   useEffect(() => {
-    if (!session?.user) return
+    if (!session?.user || sessionRefreshing) return
     void loadStats()
-  }, [session?.user])
+  }, [session?.user, sessionRefreshing])
 
   useEffect(() => {
-    if (!session?.user) return
+    if (!session?.user || sessionRefreshing) return
     void loadVehicles()
-  }, [query, session?.user, viewFilter])
+  }, [query, session?.user, sessionRefreshing, viewFilter])
 
   const refreshAll = async () => {
     await Promise.all([loadVehicles(), loadStats()])
@@ -1299,6 +1337,11 @@ export default function AdminDashboardPage() {
     () => missingChecklistItems.filter((item) => shouldWarnAboutImages || item !== 'Al menos una imagen'),
     [missingChecklistItems, shouldWarnAboutImages],
   )
+  const previewFeatures = useMemo(
+    () => [...new Set([...form.selectedFeatures, ...parseCommaList(form.customFeaturesText)])],
+    [form.customFeaturesText, form.selectedFeatures],
+  )
+  const previewSpecs = useMemo(() => buildSpecsObject(form.specRows), [form.specRows])
   const publishReady = missingChecklistItems.length === 0
   const recentVehicles = stats?.recentVehicles ?? []
 
@@ -1310,7 +1353,40 @@ export default function AdminDashboardPage() {
     return `${published} publicados · ${drafts} borradores · ${sold} vendidos`
   }, [stats, statsLoading])
 
+  const applyVehicleSnapshot = (vehicle, { syncForm = false } = {}) => {
+    setSelectedVehicle(vehicle)
+    setVehicles((current) => {
+      const exists = current.some((item) => item.id === vehicle.id)
+      if (!exists) return [vehicle, ...current]
+      return current.map((item) => (item.id === vehicle.id ? vehicle : item))
+    })
+
+    if (syncForm) {
+      setForm(toFormState(vehicle))
+    }
+  }
+
+  const ensureSilentDraft = async () => {
+    if (selectedVehicle?.id) return selectedVehicle
+
+    const requiredSteps = ['details', 'features']
+    for (const stepId of requiredSteps) {
+      const stepErrors = getFieldErrorsForStep(stepId, form, selectedVehicle)
+      if (Object.keys(stepErrors).length > 0) {
+        setFormErrors(stepErrors)
+        setWizardStepIndex(WIZARD_STEPS.findIndex((step) => step.id === stepId))
+        return null
+      }
+    }
+
+    return persistVehicle({
+      statusOverride: 'draft',
+      silent: true,
+    })
+  }
+
   const openCreateWizard = () => {
+    releasePendingUploads(pendingUploadsRef.current)
     setEditorMode('create')
     setSelectedVehicle(null)
     setForm(createInitialForm())
@@ -1324,6 +1400,9 @@ export default function AdminDashboardPage() {
     setSuggestedFields(new Set())
     setCustomModelMode(false)
     setCustomYearMode(false)
+    setPendingUploads([])
+    setUploadProgress(0)
+    setImageActionKey('')
   }
 
   const openEditWizard = async (vehicle) => {
@@ -1337,15 +1416,23 @@ export default function AdminDashboardPage() {
       setFormErrors({})
       setWizardStepIndex(0)
       setWizardOpen(true)
+      setPendingUploads([])
+      setUploadProgress(0)
+      setImageActionKey('')
     } catch (loadError) {
       setActionError(formatFriendlyError(loadError, 'No se pudo abrir el vehículo.'))
     }
   }
 
   const closeWizard = () => {
+    releasePendingUploads(pendingUploadsRef.current)
+    pendingUploadsRef.current = []
     setWizardOpen(false)
     setFormErrors({})
     setActionError('')
+    setPendingUploads([])
+    setUploadProgress(0)
+    setImageActionKey('')
   }
 
   const updateField = (field, value) => {
@@ -1372,11 +1459,13 @@ export default function AdminDashboardPage() {
     return Object.keys(nextErrors).length === 0
   }
 
-  const persistVehicle = async ({ statusOverride = null, successMessage }) => {
+  const persistVehicle = async ({ statusOverride = null, successMessage = '', silent = false }) => {
     try {
       setSaving(true)
       setActionError('')
-      setFeedback('')
+      if (!silent) {
+        setFeedback('')
+      }
 
       const payload = buildVehiclePayload(form, statusOverride)
 
@@ -1392,11 +1481,12 @@ export default function AdminDashboardPage() {
         ? await updateAdminVehicle(token, selectedVehicle.id, payload)
         : await createAdminVehicle(token, payload)
 
-      setSelectedVehicle(response.vehicle)
-      setForm(toFormState(response.vehicle))
+      applyVehicleSnapshot(response.vehicle, { syncForm: true })
       setEditorMode('edit')
-      await refreshAll()
-      setFeedback(successMessage)
+      void refreshAll()
+      if (!silent && successMessage) {
+        setFeedback(successMessage)
+      }
       return response.vehicle
     } catch (saveError) {
       if (import.meta.env.DEV) {
@@ -1437,22 +1527,8 @@ export default function AdminDashboardPage() {
     const isValid = validateCurrentStep()
     if (!isValid) return
 
-    if (currentStep.id === 'features' && !selectedVehicle?.id) {
-      // Validate all prior steps before hitting the API — prevents "Required" from backend
-      // when the user jumped here via the step indicator without filling previous steps.
-      for (const stepId of ['basic', 'pricing']) {
-        const priorErrors = getFieldErrorsForStep(stepId, form, selectedVehicle)
-        if (Object.keys(priorErrors).length > 0) {
-          setFormErrors(priorErrors)
-          setWizardStepIndex(WIZARD_STEPS.findIndex((s) => s.id === stepId))
-          return
-        }
-      }
-
-      const savedVehicle = await persistVehicle({
-        statusOverride: 'draft',
-        successMessage: 'Borrador guardado. Ya puedes subir imágenes.',
-      })
+    if (currentStep.id === 'features') {
+      const savedVehicle = await ensureSilentDraft()
       if (!savedVehicle) return
     }
 
@@ -1465,7 +1541,7 @@ export default function AdminDashboardPage() {
   }
 
   const handleSaveDraft = async () => {
-    const stepToValidate = currentStep.id === 'publish' ? 'features' : currentStep.id
+    const stepToValidate = ['preview', 'publish'].includes(currentStep.id) ? 'features' : currentStep.id
     const isValid = validateCurrentStep(stepToValidate)
     if (!isValid) return
     await persistVehicle({
@@ -1474,8 +1550,8 @@ export default function AdminDashboardPage() {
     })
   }
 
-  const handlePrimarySave = async () => {
-    const requiredSteps = ['basic', 'pricing', 'features']
+  const handlePublishNow = async () => {
+    const requiredSteps = ['details', 'features']
     for (const stepId of requiredSteps) {
       const stepErrors = getFieldErrorsForStep(stepId, form, selectedVehicle)
       if (Object.keys(stepErrors).length > 0) {
@@ -1485,25 +1561,20 @@ export default function AdminDashboardPage() {
       }
     }
 
-    if (form.status === 'published' && !publishReady) {
+    if (!publishReady) {
       setActionError('Antes de publicar, completa lo que todavía falta en el resumen.')
       if (!selectedVehicle?.images?.length) {
         setWizardStepIndex(WIZARD_STEPS.findIndex((step) => step.id === 'images'))
       } else {
-        setWizardStepIndex(WIZARD_STEPS.findIndex((step) => step.id === 'publish'))
+        setWizardStepIndex(WIZARD_STEPS.findIndex((step) => step.id === 'preview'))
       }
       return
     }
 
-    const successMessage = form.status === 'published'
-      ? 'Vehículo publicado correctamente.'
-      : form.status === 'sold'
-        ? 'Vehículo marcado como vendido.'
-        : form.status === 'archived'
-          ? 'Vehículo archivado correctamente.'
-          : 'Borrador guardado correctamente.'
-
-    await persistVehicle({ statusOverride: form.status, successMessage })
+    await persistVehicle({
+      statusOverride: 'published',
+      successMessage: 'Vehículo publicado correctamente.',
+    })
   }
 
   const handleVehicleAction = async (action, successMessage, fallbackMessage) => {
@@ -1527,22 +1598,35 @@ export default function AdminDashboardPage() {
 
   const uploadFiles = async (files) => {
     if (!files.length) return
-    if (!selectedVehicle?.id) {
-      setActionError('Primero guarda el borrador para poder subir imágenes.')
-      return
-    }
+    const queueEntries = files.map(createPendingUpload)
+    const queueEntryIds = new Set(queueEntries.map((item) => item.id))
+
     try {
       setUploading(true)
+      setUploadProgress(0)
+      setPendingUploads(queueEntries)
       setActionError('')
-      const response = await uploadAdminVehicleImages(token, selectedVehicle.id, files)
-      setSelectedVehicle(response.vehicle)
-      setForm(toFormState(response.vehicle))
-      setFeedback('Imágenes cargadas correctamente.')
-      await refreshAll()
+
+      const draftVehicle = await ensureSilentDraft()
+      if (!draftVehicle?.id) return
+
+      const response = await uploadAdminVehicleImages(token, draftVehicle.id, files, {
+        onProgress: (progress) => setUploadProgress(progress),
+      })
+
+      applyVehicleSnapshot(response.vehicle, { syncForm: true })
+      setFeedback(
+        files.length > 1
+          ? `${files.length} imágenes cargadas correctamente.`
+          : 'Imagen cargada correctamente.',
+      )
     } catch (uploadError) {
       setActionError(formatFriendlyError(uploadError, 'No se pudieron cargar las imágenes.'))
     } finally {
       setUploading(false)
+      setUploadProgress(0)
+      releasePendingUploads(queueEntries)
+      setPendingUploads((current) => current.filter((item) => !queueEntryIds.has(item.id)))
     }
   }
 
@@ -1653,14 +1737,65 @@ export default function AdminDashboardPage() {
   const handleDeleteImage = async (imageId) => {
     if (!selectedVehicle?.id) return
     try {
+      setImageActionKey(`delete:${imageId}`)
       setActionError('')
       const response = await deleteAdminVehicleImage(token, selectedVehicle.id, imageId)
-      setSelectedVehicle(response.vehicle)
-      setForm(toFormState(response.vehicle))
+      applyVehicleSnapshot(response.vehicle, { syncForm: true })
       setFeedback('Imagen eliminada correctamente.')
-      await refreshAll()
     } catch (deleteError) {
       setActionError(formatFriendlyError(deleteError, 'No se pudo eliminar la imagen.'))
+    } finally {
+      setImageActionKey('')
+    }
+  }
+
+  const handleSetMainImage = async (imageId) => {
+    if (!selectedVehicle?.id) return
+    try {
+      setImageActionKey(`main:${imageId}`)
+      setActionError('')
+      const response = await updateAdminVehicleImagePresentation(token, selectedVehicle.id, {
+        mainImageId: imageId,
+      })
+      applyVehicleSnapshot(response.vehicle, { syncForm: true })
+      setFeedback('Portada actualizada correctamente.')
+    } catch (updateError) {
+      setActionError(formatFriendlyError(updateError, 'No se pudo actualizar la portada.'))
+    } finally {
+      setImageActionKey('')
+    }
+  }
+
+  const handleMoveImage = async (imageId, direction) => {
+    if (!selectedVehicle?.id || !Array.isArray(selectedVehicle.images) || selectedVehicle.images.length < 2) return
+
+    const orderedImages = [...selectedVehicle.images].sort((left, right) => left.order - right.order)
+    const currentIndex = orderedImages.findIndex((image) => image.id === imageId)
+    if (currentIndex < 0) return
+
+    const targetIndex = direction === 'left'
+      ? Math.max(0, currentIndex - 1)
+      : Math.min(orderedImages.length - 1, currentIndex + 1)
+
+    if (targetIndex === currentIndex) return
+
+    const reordered = [...orderedImages]
+    const [movedImage] = reordered.splice(currentIndex, 1)
+    reordered.splice(targetIndex, 0, movedImage)
+
+    try {
+      setImageActionKey(`order:${imageId}`)
+      setActionError('')
+      const response = await updateAdminVehicleImagePresentation(token, selectedVehicle.id, {
+        imageOrder: reordered.map((image) => image.id),
+        mainImageId: orderedImages.find((image) => image.isMain)?.id,
+      })
+      applyVehicleSnapshot(response.vehicle, { syncForm: true })
+      setFeedback('Orden de imágenes actualizado.')
+    } catch (updateError) {
+      setActionError(formatFriendlyError(updateError, 'No se pudo reordenar la galería.'))
+    } finally {
+      setImageActionKey('')
     }
   }
 
@@ -1716,8 +1851,36 @@ export default function AdminDashboardPage() {
     }))
   }
 
+  const handleStepNavigation = async (nextIndex) => {
+    if (nextIndex === wizardStepIndex) return
+
+    if (nextIndex < wizardStepIndex) {
+      setActionError('')
+      setWizardStepIndex(nextIndex)
+      return
+    }
+
+    for (let index = wizardStepIndex; index < nextIndex; index += 1) {
+      const stepId = WIZARD_STEPS[index].id
+      const stepErrors = getFieldErrorsForStep(stepId, form, selectedVehicle)
+
+      if (Object.keys(stepErrors).length > 0) {
+        setFormErrors(stepErrors)
+        setWizardStepIndex(index)
+        return
+      }
+
+      if (stepId === 'features') {
+        const savedVehicle = await ensureSilentDraft()
+        if (!savedVehicle) return
+      }
+    }
+
+    setWizardStepIndex(nextIndex)
+  }
+
   // ── Loading skeleton ────────────────────────────────────────────────────
-  if (sessionLoading) {
+  if (sessionLoading && !session?.user) {
     return (
       <div className="min-h-screen bg-[#F8F8F8]">
         <div className="h-16 bg-white border-b border-[#F0F0F0]" />
@@ -1805,6 +1968,15 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </nav>
+
+      {sessionRefreshing && (
+        <div className="mx-auto max-w-7xl px-6 pt-4">
+          <div className="rounded-2xl bg-white border border-[#F0F0F0] px-4 py-3 font-body text-sm text-[#888] flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-[#DDD] border-t-[#777] rounded-full animate-spin flex-shrink-0" />
+            Verificando acceso y sincronizando tu sesión...
+          </div>
+        </div>
+      )}
 
       {/* ── Toast area ── */}
       {(actionError || feedback) && !wizardOpen && (
@@ -2052,7 +2224,7 @@ export default function AdminDashboardPage() {
                 <WizardStepIndicator
                   steps={WIZARD_STEPS}
                   currentIndex={wizardStepIndex}
-                  onStepClick={setWizardStepIndex}
+                  onStepClick={(nextIndex) => { void handleStepNavigation(nextIndex) }}
                   form={form}
                   selectedVehicle={selectedVehicle}
                 />
@@ -2106,8 +2278,8 @@ export default function AdminDashboardPage() {
                   <p className="font-body text-base text-[#AAA] mt-2">{currentStep.description}</p>
                 </div>
 
-                {/* ── Step: basic ── */}
-                {currentStep.id === 'basic' && (
+                {/* ── Step: details ── */}
+                {currentStep.id === 'details' && (
                   <div className="space-y-8">
 
                     <FieldShell
@@ -2343,12 +2515,9 @@ export default function AdminDashboardPage() {
                         )}
                       </div>
                     </FieldShell>
-                  </div>
-                )}
 
-                {/* ── Step: pricing ── */}
-                {currentStep.id === 'pricing' && (
-                  <div className="space-y-8">
+                    <div className="pt-2 border-t border-[#F0F0F0]" />
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <FieldShell
                         label="Precio"
@@ -2584,47 +2753,122 @@ export default function AdminDashboardPage() {
                 {/* ── Step: images ── */}
                 {currentStep.id === 'images' && (
                   <div className="space-y-8">
-                    {!selectedVehicle?.id && (
-                      <div className="rounded-2xl bg-[#FAFAFA] border border-[#F0F0F0] px-5 py-4">
-                        <p className="font-body text-sm text-[#999] leading-relaxed">
-                          Cuando continúas desde el paso anterior, guardamos un borrador para habilitar la carga de imágenes. Vuelve un paso y guarda si todavía no lo has hecho.
-                        </p>
-                      </div>
-                    )}
+                    <div className="rounded-2xl bg-[#FAFAFA] border border-[#F0F0F0] px-5 py-4">
+                      <p className="font-body text-sm text-[#777] leading-relaxed">
+                        Selecciona varias fotos a la vez. Guardamos tu progreso automáticamente en segundo plano para que puedas concentrarte en la publicación.
+                      </p>
+                    </div>
 
                     <FieldShell
                       label="Fotos del vehículo"
-                      hint="Recomendado: 5 a 10 fotos limpias, bien iluminadas."
+                      hint="Recomendado: 5 a 10 fotos limpias, bien iluminadas. La primera imagen queda como portada por defecto."
                       error={formErrors.images || formErrors.publishImages}
                     >
                       <ImageDropZone
                         onUpload={uploadFiles}
                         uploading={uploading}
-                        disabled={!selectedVehicle?.id}
+                        disabled={!canManageVehicles || saving || Boolean(imageActionKey)}
                       />
                     </FieldShell>
+
+                    {pendingUploads.length > 0 && (
+                      <div className="bg-white rounded-3xl p-5 border border-[#F0F0F0] space-y-5">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="font-body text-sm font-medium text-[#0A0A0A]">
+                              Subiendo {pendingUploads.length} {pendingUploads.length === 1 ? 'imagen' : 'imágenes'}
+                            </p>
+                            <p className="font-body text-xs text-[#999] mt-1">
+                              {uploadProgress}% completado
+                            </p>
+                          </div>
+                          <span className="font-body text-xs text-[#AAA]">
+                            {uploading ? 'Procesando archivos...' : 'Preparando carga...'}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-[#F3F3F3] overflow-hidden">
+                          <div
+                            className="h-full bg-[#0A0A0A] transition-all duration-200"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                          {pendingUploads.map((item) => (
+                            <div key={item.id} className="rounded-2xl overflow-hidden border border-[#F0F0F0] bg-[#FAFAFA]">
+                              <img src={item.previewUrl} alt="" className="w-full aspect-video object-cover" />
+                              <div className="px-4 py-3">
+                                <p className="font-body text-sm text-[#0A0A0A] truncate">{item.name}</p>
+                                <p className="font-body text-xs text-[#AAA] mt-1">{formatFileSize(item.size)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {Array.isArray(selectedVehicle?.images) && selectedVehicle.images.length > 0 ? (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {selectedVehicle.images.map((image) => (
-                          <div key={image.id} className="bg-white rounded-2xl overflow-hidden">
-                            <img src={image.url} alt="" className="w-full aspect-video object-cover" />
-                            <div className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div key={image.id} className="bg-white rounded-2xl overflow-hidden border border-[#F0F0F0]">
+                            <div className="relative">
+                              <img src={image.url} alt="" className="w-full aspect-video object-cover" />
+                              <div className="absolute top-3 left-3 flex items-center gap-2">
+                                <span className="rounded-full bg-black/65 px-2.5 py-1 text-[11px] text-white">
+                                  Foto {image.order + 1}
+                                </span>
+                                {image.isMain && (
+                                  <span className="rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-medium text-[#0A0A0A]">
+                                    Portada
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="px-4 py-4 space-y-3">
                               <div>
                                 <p className="font-body text-sm text-[#0A0A0A]">
-                                  {image.isMain ? 'Principal' : `Foto ${image.order + 1}`}
+                                  {image.isMain ? 'Imagen principal del anuncio' : 'Imagen de galería'}
                                 </p>
                                 <p className="font-body text-xs text-[#AAA] mt-0.5">
                                   {image.width}×{image.height}
                                 </p>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteImage(image.id)}
-                                className="font-body text-xs text-red-400 hover:text-red-600 transition-colors"
-                              >
-                                Eliminar
-                              </button>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {!image.isMain && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetMainImage(image.id)}
+                                    disabled={uploading || Boolean(imageActionKey)}
+                                    className="rounded-full border border-[#E8E8E8] px-3 py-1.5 text-xs text-[#555] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                                  >
+                                    Usar como portada
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveImage(image.id, 'left')}
+                                  disabled={uploading || Boolean(imageActionKey) || image.order === 0}
+                                  className="rounded-full border border-[#E8E8E8] px-3 py-1.5 text-xs text-[#555] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                                >
+                                  Mover antes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveImage(image.id, 'right')}
+                                  disabled={uploading || Boolean(imageActionKey) || image.order === selectedVehicle.images.length - 1}
+                                  className="rounded-full border border-[#E8E8E8] px-3 py-1.5 text-xs text-[#555] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                                >
+                                  Mover después
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteImage(image.id)}
+                                  disabled={uploading || Boolean(imageActionKey)}
+                                  className="rounded-full px-3 py-1.5 text-xs text-red-500 transition-colors hover:text-red-700 disabled:opacity-40"
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -2632,8 +2876,157 @@ export default function AdminDashboardPage() {
                     ) : selectedVehicle?.id && (
                       <div className="bg-white rounded-3xl p-8 text-center">
                         <p className="font-body text-sm text-[#AAA]">
-                          Todavía no hay imágenes. Puedes guardar como borrador y volver luego, o subirlas ahora.
+                          Todavía no hay imágenes. Puedes guardarlo como borrador y volver luego, o subirlas ahora y dejarlo listo para publicar.
                         </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Step: preview ── */}
+                {currentStep.id === 'preview' && (
+                  <div className="space-y-8">
+                    <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6">
+                      <div className="bg-white rounded-3xl overflow-hidden border border-[#F0F0F0]">
+                        {selectedVehicle?.mainImage ? (
+                          <img
+                            src={selectedVehicle.mainImage}
+                            alt=""
+                            className="w-full aspect-[16/10] object-cover"
+                          />
+                        ) : (
+                          <div className="aspect-[16/10] bg-[#FAFAFA] flex items-center justify-center px-8 text-center">
+                            <p className="font-body text-sm text-[#AAA]">
+                              Cuando agregues imágenes, aquí verás la portada principal del vehículo.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bg-white rounded-3xl p-6 border border-[#F0F0F0] space-y-5">
+                        <div>
+                          <p className="font-body text-[11px] uppercase tracking-[0.24em] text-[#CCC] mb-3">
+                            Vista pública
+                          </p>
+                          <h3 className="font-heading text-[28px] tracking-tight text-[#0A0A0A] leading-tight">
+                            {form.title || suggestedTitle || 'Tu próximo anuncio'}
+                          </h3>
+                          <p className="font-body text-sm text-[#999] mt-2">
+                            {resolveChoiceValue(form.brandChoice, form.customBrand) || 'Marca'}
+                            {' · '}
+                            {form.model || 'Modelo'}
+                            {' · '}
+                            {form.year || 'Año'}
+                          </p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <p className="font-heading text-3xl tracking-tight text-[#0A0A0A]">
+                            {form.price ? formatCurrency(form.price, form.currency) : 'Precio pendiente'}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              form.condition,
+                              form.transmission === OTHER_OPTION ? form.customTransmission : form.transmission,
+                              form.fuelType === OTHER_OPTION ? form.customFuelType : form.fuelType,
+                              form.drivetrain === OTHER_OPTION ? form.customDrivetrain : form.drivetrain,
+                            ].filter(Boolean).map((item) => (
+                              <span key={item} className="rounded-full bg-[#F5F5F5] px-3 py-1.5 text-xs text-[#666]">
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-[#F0F0F0] space-y-2.5">
+                          {[
+                            { label: 'Ubicación', value: resolveChoiceValue(form.locationChoice, form.customLocation) || 'Pendiente' },
+                            { label: 'Color', value: resolveChoiceValue(form.colorChoice, form.customColor) || 'Pendiente' },
+                            { label: 'Kilometraje', value: `${Number(form.mileage || 0).toLocaleString()} km` },
+                            { label: 'Fotos', value: `${selectedVehicle?.images?.length ?? 0}` },
+                          ].map((item) => (
+                            <div key={item.label} className="flex items-center justify-between gap-4">
+                              <span className="font-body text-sm text-[#AAA]">{item.label}</span>
+                              <span className="font-body text-sm text-[#0A0A0A]">{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {Array.isArray(selectedVehicle?.images) && selectedVehicle.images.length > 0 && (
+                      <div className="bg-white rounded-3xl p-6 border border-[#F0F0F0] space-y-5">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <h3 className="font-heading text-xl tracking-tight text-[#0A0A0A]">Galería</h3>
+                            <p className="font-body text-sm text-[#AAA] mt-1">Confirma el orden y la portada antes de publicar.</p>
+                          </div>
+                          <span className="font-body text-xs text-[#AAA]">{selectedVehicle.images.length} fotos</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          {selectedVehicle.images.map((image) => (
+                            <div key={image.id} className="rounded-2xl overflow-hidden border border-[#F0F0F0] bg-[#FAFAFA]">
+                              <img src={image.url} alt="" className="w-full aspect-video object-cover" />
+                              <div className="px-3 py-2.5 flex items-center justify-between gap-3">
+                                <span className="font-body text-xs text-[#666]">Foto {image.order + 1}</span>
+                                {image.isMain && (
+                                  <span className="font-body text-[11px] font-medium text-[#0A0A0A]">Portada</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="bg-white rounded-3xl p-6 border border-[#F0F0F0] space-y-5">
+                      <div>
+                        <h3 className="font-heading text-xl tracking-tight text-[#0A0A0A]">Descripción</h3>
+                        <p className="font-body text-sm text-[#666] mt-3 leading-relaxed whitespace-pre-line">
+                          {form.description.trim() || 'La descripción aparecerá aquí cuando la completes.'}
+                        </p>
+                      </div>
+
+                      {previewFeatures.length > 0 && (
+                        <div>
+                          <h4 className="font-body text-sm font-medium text-[#0A0A0A] mb-3">Equipamiento</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {previewFeatures.map((feature) => (
+                              <span key={feature} className="rounded-full bg-[#F5F5F5] px-3 py-1.5 text-xs text-[#666]">
+                                {feature}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {Object.keys(previewSpecs).length > 0 && (
+                        <div>
+                          <h4 className="font-body text-sm font-medium text-[#0A0A0A] mb-3">Detalles rápidos</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {Object.entries(previewSpecs).map(([key, value]) => (
+                              <div key={key} className="rounded-2xl bg-[#FAFAFA] px-4 py-3">
+                                <p className="font-body text-xs uppercase tracking-[0.14em] text-[#BBB]">{key}</p>
+                                <p className="font-body text-sm text-[#0A0A0A] mt-1">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {!publishReady && (
+                      <div className="rounded-2xl bg-[#FFF8EA] border border-[#F8E5B7] px-5 py-4">
+                        <p className="font-body text-sm font-medium text-[#8A6414]">
+                          Antes de publicarlo, todavía faltan algunos puntos:
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {visibleMissingChecklistItems.map((item) => (
+                            <span key={item} className="rounded-full bg-white px-3 py-1.5 text-xs text-[#8A6414] border border-[#F2DEAD]">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2643,32 +3036,45 @@ export default function AdminDashboardPage() {
                 {currentStep.id === 'publish' && (
                   <div className="space-y-8">
                     <FieldShell
-                      label="¿Cómo quieres guardar este vehículo?"
-                      hint="Si aún faltan fotos o detalles, lo mejor es dejarlo como borrador."
+                      label="Decisión final"
+                      hint="Aquí decides si el anuncio se queda interno como borrador o si ya sale en vivo."
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {STATUS_OPTIONS.map((option) => (
-                          <button
+                        {FINAL_ACTION_OPTIONS.map((option) => (
+                          <div
                             key={option.value}
-                            type="button"
-                            onClick={() => updateField('status', option.value)}
                             className={[
-                              'rounded-2xl border p-5 text-left transition-all duration-150',
-                              form.status === option.value
+                              'rounded-2xl border p-5 text-left',
+                              option.value === 'published'
                                 ? 'border-[#0A0A0A] bg-[#0A0A0A]'
-                                : 'border-[#E8E8E8] bg-white hover:border-[#C0C0C0]',
+                                : 'border-[#E8E8E8] bg-white',
                             ].join(' ')}
                           >
-                            <p className={`font-body text-sm font-medium ${form.status === option.value ? 'text-white' : 'text-[#0A0A0A]'}`}>
+                            <p className={`font-body text-sm font-medium ${option.value === 'published' ? 'text-white' : 'text-[#0A0A0A]'}`}>
                               {option.label}
                             </p>
-                            <p className={`font-body text-sm mt-1.5 leading-relaxed ${form.status === option.value ? 'text-white/60' : 'text-[#AAA]'}`}>
+                            <p className={`font-body text-sm mt-1.5 leading-relaxed ${option.value === 'published' ? 'text-white/60' : 'text-[#AAA]'}`}>
                               {option.description}
                             </p>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </FieldShell>
+
+                    {!publishReady && (
+                      <div className="rounded-2xl bg-[#FFF8EA] border border-[#F8E5B7] px-5 py-4">
+                        <p className="font-body text-sm font-medium text-[#8A6414]">
+                          Si hoy quieres publicarlo, completa antes estos puntos:
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {visibleMissingChecklistItems.map((item) => (
+                            <span key={item} className="rounded-full bg-white px-3 py-1.5 text-xs text-[#8A6414] border border-[#F2DEAD]">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <FieldShell label="Etiqueta visible" hint="Sin etiqueta o una breve como Nuevo, Oferta o Full." optional>
@@ -2737,8 +3143,10 @@ export default function AdminDashboardPage() {
                 {/* Navigation */}
                 <div className="flex items-center justify-between mt-14 pt-8 border-t border-[#F0F0F0]">
                   <div className="font-body text-sm text-[#CCC]">
-                    {currentStep.id === 'images' && !selectedVehicle?.id
-                      ? 'Guarda el borrador para habilitar las imágenes.'
+                    {currentStep.id === 'images'
+                      ? 'Tu progreso se guarda automáticamente mientras organizas la galería.'
+                      : currentStep.id === 'preview' && !publishReady
+                        ? 'Revisa lo pendiente antes del paso final.'
                       : currentStep.id === 'publish' && !publishReady
                         ? 'Aún faltan algunos puntos antes de publicar.'
                         : `Paso ${wizardStepIndex + 1} de ${WIZARD_STEPS.length}`}
@@ -2778,11 +3186,11 @@ export default function AdminDashboardPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={handlePrimarySave}
-                          disabled={!canManageVehicles || saving || (form.status === 'published' && !publishReady)}
+                          onClick={handlePublishNow}
+                          disabled={!canManageVehicles || saving || !publishReady}
                           className="rounded-full bg-[#0A0A0A] px-6 py-3 font-body text-sm text-white transition-colors hover:bg-[#222] disabled:opacity-40"
                         >
-                          {saving ? 'Guardando...' : STATUS_OPTIONS.find((o) => o.value === form.status)?.label ?? 'Guardar'}
+                          {saving ? 'Publicando...' : 'Publicar vehículo'}
                         </button>
                       </>
                     )}
@@ -2812,12 +3220,17 @@ export default function AdminDashboardPage() {
                     </div>
 
                     <div className="space-y-2.5">
-                      {[
-                        { label: 'Precio', value: form.price ? formatCurrency(form.price, form.currency) : 'Pendiente' },
-                        { label: 'Estado', value: getStatusLabel(form.status) },
-                        { label: 'Imágenes', value: `${selectedVehicle?.images?.length ?? 0} fotos` },
-                        { label: 'Progreso', value: `${progressPercent}%` },
-                      ].map((item) => (
+                        {[
+                          { label: 'Precio', value: form.price ? formatCurrency(form.price, form.currency) : 'Pendiente' },
+                          {
+                            label: 'Estado',
+                            value: currentStep.id === 'publish' && publishReady
+                              ? 'Listo para publicar'
+                              : getStatusLabel(form.status),
+                          },
+                          { label: 'Imágenes', value: `${selectedVehicle?.images?.length ?? 0} fotos` },
+                          { label: 'Progreso', value: `${progressPercent}%` },
+                        ].map((item) => (
                         <div key={item.label} className="flex items-center justify-between gap-4">
                           <span className="font-body text-sm text-[#AAA]">{item.label}</span>
                           <span className="font-body text-sm text-[#0A0A0A]">{item.value}</span>

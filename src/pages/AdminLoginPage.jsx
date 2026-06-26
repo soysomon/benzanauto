@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loginAdmin } from '../lib/adminApi'
-import { setStoredAdminToken } from '../lib/adminSession'
+import { setStoredAdminSession } from '../lib/adminSession'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
@@ -15,7 +15,7 @@ export default function AdminLoginPage() {
       setLoading(true)
       setError('')
       const response = await loginAdmin(form)
-      setStoredAdminToken(response.token)
+      setStoredAdminSession(response.token, response.user)
       navigate('/admin', { replace: true })
     } catch (submitError) {
       setError(submitError.message ?? 'No se pudo iniciar sesión.')

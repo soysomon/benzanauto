@@ -1,4 +1,4 @@
-import { apiRequest } from './apiClient'
+import { apiRequest, apiUploadRequest } from './apiClient'
 
 export function loginAdmin(credentials) {
   return apiRequest('/admin/auth/login', {
@@ -49,6 +49,14 @@ export function updateAdminVehicle(token, id, payload) {
   })
 }
 
+export function updateAdminVehicleImagePresentation(token, id, payload) {
+  return apiRequest(`/admin/vehicles/${id}`, {
+    method: 'PUT',
+    token,
+    body: payload,
+  })
+}
+
 export function deleteAdminVehicle(token, id) {
   return apiRequest(`/admin/vehicles/${id}`, {
     method: 'DELETE',
@@ -85,16 +93,25 @@ export function toggleAdminVehicleFeatured(token, id, featured) {
   })
 }
 
-export function uploadAdminVehicleImages(token, id, files) {
+export function uploadAdminVehicleImages(token, id, files, options = {}) {
   const form = new FormData()
   files.forEach((file) => {
     form.append('images', file)
   })
 
-  return apiRequest(`/admin/vehicles/${id}/images`, {
+  if (typeof options.mainImageIndex === 'number') {
+    form.append('mainImageIndex', String(options.mainImageIndex))
+  }
+
+  if (typeof options.setAsMain === 'boolean') {
+    form.append('setAsMain', String(options.setAsMain))
+  }
+
+  return apiUploadRequest(`/admin/vehicles/${id}/images`, {
     method: 'POST',
     token,
     body: form,
+    onProgress: options.onProgress,
   })
 }
 
@@ -104,4 +121,3 @@ export function deleteAdminVehicleImage(token, id, imageId) {
     token,
   })
 }
-

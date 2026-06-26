@@ -65,6 +65,24 @@ async function parseResponse(response) {
   return text ? { message: text } : null
 }
 
+function parseRawResponseBody(rawBody, contentType = '') {
+  if (!rawBody) return null
+
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(rawBody)
+    } catch {
+      return { message: rawBody }
+    }
+  }
+
+  try {
+    return JSON.parse(rawBody)
+  } catch {
+    return { message: rawBody }
+  }
+}
+
 export class ApiError extends Error {
   constructor(message, { status = 500, code = 'API_ERROR', details = null } = {}) {
     super(message)
@@ -140,4 +158,71 @@ export async function apiRequest(path, {
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+export function apiUploadRequest(path, {
+  method = 'POST',
+  token,
+  headers = {},
+  body,
+  onProgress,
+} = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(method, buildRequestUrl(path))
+    xhr.timeout = REQUEST_TIMEOUT_MS
+    xhr.withCredentials = false
+
+    const finalHeaders = new Headers(headers)
+    if (token) {
+      finalHeaders.set('Authorization', `Bearer ${token}`)
+    }
+
+    for (const [headerName, headerValue] of finalHeaders.entries()) {
+      xhr.setRequestHeader(headerName, headerValue)
+    }
+
+    if (typeof onProgress === 'function') {
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return
+        onProgress(Math.round((event.loaded / event.total) * 100), event)
+      }
+    }
+
+    xhr.onload = () => {
+      const contentType = xhr.getResponseHeader('content-type') ?? ''
+      const data = parseRawResponseBody(xhr.responseText, contentType)
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data)
+        return
+      }
+
+      const errorPayload = data?.error
+      reject(new ApiError(
+        errorPayload?.message ?? data?.message ?? 'No se pudo completar la solicitud.',
+        {
+          status: xhr.status || 500,
+          code: errorPayload?.code,
+          details: errorPayload?.details ?? null,
+        },
+      ))
+    }
+
+    xhr.onerror = () => {
+      reject(new ApiError('Error inesperado de red.', {
+        status: 500,
+        code: 'NETWORK_ERROR',
+      }))
+    }
+
+    xhr.ontimeout = () => {
+      reject(new ApiError('La solicitud tardó demasiado. Intenta de nuevo.', {
+        status: 408,
+        code: 'REQUEST_TIMEOUT',
+      }))
+    }
+
+    xhr.send(body)
+  })
 }
