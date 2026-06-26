@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect } from 'react'
 import Navbar from './components/layout/Navbar'
@@ -59,7 +59,9 @@ function AnimatedRoutes() {
             <Route path="/bomba-gasolina" element={<BombaGasolina />} />
             <Route path="/nosotros" element={<Nosotros />} />
             <Route path="/contacto" element={<Contacto />} />
+            <Route path="/login" element={<Navigate to="/admin-login" replace />} />
             <Route path="/admin-login" element={<AdminLoginPage />} />
+            <Route path="/dashboard" element={<Navigate to="/admin" replace />} />
             <Route path="/admin" element={<AdminDashboardPage />} />
           </Routes>
         </motion.div>

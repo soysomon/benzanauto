@@ -135,7 +135,12 @@ export default function Navbar() {
               <path d="M2 12h20M12 2c3 4 3 16 0 20M12 2c-3 4-3 16 0 20" strokeWidth="1.5"/>
             </svg>
           </button>
-          <button className="text-neutral-500 hover:text-neutral-900 transition">
+          <button
+            type="button"
+            aria-label="Ir al acceso administrativo"
+            onClick={() => { window.location.href = '/admin-login' }}
+            className="text-neutral-500 hover:text-neutral-900 transition"
+          >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <circle cx="12" cy="8" r="4" strokeWidth="1.5"/>
               <path d="M4 20c2-4 14-4 16 0" strokeWidth="1.5"/>
