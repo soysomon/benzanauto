@@ -9,6 +9,20 @@ import { listPublicVehicles } from '../lib/publicApi'
 const fmt = (price) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price)
 
+function useDebouncedValue(value, delayMs = 350) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value)
+    }, delayMs)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [delayMs, value])
+
+  return debouncedValue
+}
+
 function FilterSection({ label, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -70,12 +84,12 @@ function CheckRow({ label, count, checked, onChange }) {
   )
 }
 
-function parseMultiValue(searchParams, key, allowedValues) {
+function parseMultiValue(searchParams, key, allowedValues = null) {
   return [...new Set(
     searchParams
       .getAll(key)
       .map((value) => value.trim())
-      .filter((value) => allowedValues.includes(value)),
+      .filter((value) => value && (!allowedValues || allowedValues.includes(value))),
   )]
 }
 
@@ -92,18 +106,18 @@ function parsePositiveInteger(searchParams, key) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function parseInventoryFilters(searchParams, { allBrands, allCategories, allFuels }) {
+function parseInventoryFilters(searchParams) {
   return {
     searchQuery: searchParams.get('q')?.trim() ?? '',
     statusFilter: parseSingleValue(searchParams, 'estado', ['Todos', 'Nuevo', 'Usado'], 'Todos'),
-    brands: parseMultiValue(searchParams, 'marca', allBrands),
+    brands: parseMultiValue(searchParams, 'marca'),
     categories: [
       ...new Set([
-        ...parseMultiValue(searchParams, 'tipo', allCategories),
-        ...parseMultiValue(searchParams, 'categoria', allCategories),
+        ...parseMultiValue(searchParams, 'tipo'),
+        ...parseMultiValue(searchParams, 'categoria'),
       ]),
     ],
-    fuels: parseMultiValue(searchParams, 'combustible', allFuels),
+    fuels: parseMultiValue(searchParams, 'combustible'),
     maxPrice: parsePositiveInteger(searchParams, 'precioMax'),
     sortBy: parseSingleValue(searchParams, 'orden', ['default', 'price-asc', 'price-desc', 'year'], 'default'),
   }
@@ -138,6 +152,14 @@ function normalizeFacets(facets) {
   }
 }
 
+function formatInventoryError(error) {
+  if (error?.status === 429) {
+    return 'Estamos actualizando el inventario. Intenta otra vez en unos segundos.'
+  }
+
+  return error?.message ?? 'No se pudo cargar el inventario.'
+}
+
 export default function Inventario() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [vehicles, setVehicles] = useState([])
@@ -145,22 +167,40 @@ export default function Inventario() {
   const [facets, setFacets] = useState(normalizeFacets(null))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [retryNonce, setRetryNonce] = useState(0)
+
+  const searchParamsKey = searchParams.toString()
 
   const allBrands = useMemo(() => facets.brands.map((item) => item.value), [facets.brands])
   const allCategories = useMemo(() => facets.bodyTypes.map((item) => item.value), [facets.bodyTypes])
   const allFuels = useMemo(() => facets.fuelTypes.map((item) => item.value), [facets.fuelTypes])
-  const filters = useMemo(() => parseInventoryFilters(searchParams, {
-    allBrands,
-    allCategories,
-    allFuels,
-  }), [allBrands, allCategories, allFuels, searchParams])
+  const filters = useMemo(
+    () => parseInventoryFilters(new URLSearchParams(searchParamsKey)),
+    [searchParamsKey],
+  )
   const { searchQuery, statusFilter, brands, categories, fuels, maxPrice, sortBy } = filters
+  const [searchInput, setSearchInput] = useState(searchQuery)
+  const debouncedSearchInput = useDebouncedValue(searchInput, 350)
+
+  useEffect(() => {
+    setSearchInput(searchQuery)
+  }, [searchQuery])
+
+  const currentFilterSnapshot = useMemo(
+    () => ({
+      ...filters,
+      searchQuery: searchInput,
+    }),
+    [filters, searchInput],
+  )
 
   const updateFilters = (updater) => {
-    const nextFilters = typeof updater === 'function' ? updater(filters) : { ...filters, ...updater }
+    const nextFilters = typeof updater === 'function'
+      ? updater(currentFilterSnapshot)
+      : { ...currentFilterSnapshot, ...updater }
     const nextParams = buildInventorySearchParams(nextFilters)
 
-    if (nextParams.toString() !== searchParams.toString()) {
+    if (nextParams.toString() !== searchParamsKey) {
       setSearchParams(nextParams, { replace: true })
     }
   }
@@ -173,50 +213,73 @@ export default function Inventario() {
   }
 
   useEffect(() => {
+    const normalizedSearch = debouncedSearchInput.trim()
+    if (normalizedSearch === searchQuery) return
+
+    const nextParams = buildInventorySearchParams({
+      ...filters,
+      searchQuery: normalizedSearch,
+    })
+
+    if (nextParams.toString() !== searchParamsKey) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [debouncedSearchInput, filters, searchQuery, searchParamsKey, setSearchParams])
+
+  const requestParams = useMemo(() => ({
+    limit: 60,
+    q: searchQuery || undefined,
+    estado: statusFilter !== 'Todos' ? [statusFilter] : undefined,
+    marca: brands,
+    tipo: categories,
+    combustible: fuels,
+    precioMax: maxPrice || undefined,
+    orden: sortBy,
+  }), [brands, categories, fuels, maxPrice, searchQuery, sortBy, statusFilter])
+
+  const requestKey = useMemo(() => JSON.stringify(requestParams), [requestParams])
+
+  useEffect(() => {
     let ignore = false
+    const controller = new AbortController()
 
     async function loadVehicles() {
       try {
         setLoading(true)
         setError('')
 
-        const response = await listPublicVehicles({
-          limit: 60,
-          q: searchQuery || undefined,
-          estado: statusFilter !== 'Todos' ? [statusFilter] : undefined,
-          marca: brands,
-          tipo: categories,
-          combustible: fuels,
-          precioMax: maxPrice || undefined,
-          orden: sortBy,
+        const response = await listPublicVehicles(requestParams, {
+          signal: controller.signal,
         })
 
-        if (ignore) return
+        if (ignore || controller.signal.aborted) return
 
         setVehicles(response.data)
         setMeta(response.meta)
         setFacets(normalizeFacets(response.facets))
       } catch (loadError) {
-        if (!ignore) {
-          setError(loadError.message ?? 'No se pudo cargar el inventario.')
-          setVehicles([])
-          setMeta({ total: 0 })
+        if (!ignore && !controller.signal.aborted) {
+          setError(formatInventoryError(loadError))
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && !controller.signal.aborted) {
           setLoading(false)
         }
       }
     }
 
     loadVehicles()
-    return () => { ignore = true }
-  }, [brands, categories, fuels, maxPrice, searchQuery, sortBy, statusFilter])
+    return () => {
+      ignore = true
+      controller.abort()
+    }
+  }, [requestKey, requestParams, retryNonce])
 
   const countFor = (facetName, value) =>
     facets[facetName]?.find((item) => item.value === value)?.count ?? 0
 
   const resetFilters = () => {
+    setSearchInput('')
     setSearchParams(new URLSearchParams(), { replace: true })
   }
 
@@ -255,15 +318,15 @@ export default function Inventario() {
               </svg>
               <input
                 type="search"
-                value={searchQuery}
-                onChange={(event) => updateFilters({ searchQuery: event.target.value })}
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Buscar Toyota, Prado, diesel..."
                 className="w-full border border-neutral-200 bg-white py-3 pl-11 pr-10 font-body text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900"
               />
-              {searchQuery && (
+              {searchInput && (
                 <button
                   type="button"
-                  onClick={() => updateFilters({ searchQuery: '' })}
+                  onClick={() => setSearchInput('')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 transition-colors hover:text-neutral-900"
                   aria-label="Limpiar búsqueda"
                 >
@@ -355,7 +418,7 @@ export default function Inventario() {
           <div className="flex-1 min-w-0">
             <div className="flex flex-col gap-3 mb-6">
               <p className="font-body text-sm text-neutral-500">
-                {loading
+                {loading && vehicles.length === 0
                   ? 'Cargando inventario...'
                   : `${meta.total} vehículo${meta.total !== 1 ? 's' : ''} disponible${meta.total !== 1 ? 's' : ''}`}
               </p>
@@ -378,6 +441,14 @@ export default function Inventario() {
                   </button>
                 </div>
               )}
+
+              {error && vehicles.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="font-body text-sm text-amber-800">
+                    {error}
+                  </p>
+                </div>
+              )}
             </div>
 
             {!loading && !error && vehicles.length > 0 ? (
@@ -386,10 +457,16 @@ export default function Inventario() {
                   <VehicleCard key={vehicle.slug ?? vehicle.id} vehicle={vehicle} index={index} />
                 ))}
               </div>
-            ) : loading ? (
+            ) : loading && vehicles.length === 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                 {[0, 1, 2, 3, 4, 5].map((item) => (
                   <div key={item} className="border border-neutral-200 bg-neutral-50 animate-pulse min-h-[380px]" />
+                ))}
+              </div>
+            ) : vehicles.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {vehicles.map((vehicle, index) => (
+                  <VehicleCard key={vehicle.slug ?? vehicle.id} vehicle={vehicle} index={index} />
                 ))}
               </div>
             ) : error ? (
@@ -397,7 +474,7 @@ export default function Inventario() {
                 title="Inventario no disponible"
                 message={error}
                 actionLabel="Reintentar"
-                onAction={() => window.location.reload()}
+                onAction={() => setRetryNonce((current) => current + 1)}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-32 text-center">

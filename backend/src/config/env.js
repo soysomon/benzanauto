@@ -38,6 +38,8 @@ const envSchema = z.object({
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   API_RATE_LIMIT_WINDOW_MS: parseInteger(60_000).default(60_000),
   API_RATE_LIMIT_MAX: parseInteger(120).default(120),
+  PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS: parseInteger(60_000).default(60_000),
+  PUBLIC_CATALOG_RATE_LIMIT_MAX: parseInteger(600).default(600),
   LOGIN_RATE_LIMIT_WINDOW_MS: parseInteger(900_000).default(900_000),
   LOGIN_RATE_LIMIT_MAX: parseInteger(8).default(8),
   JSON_BODY_LIMIT: z.string().default('1mb'),
