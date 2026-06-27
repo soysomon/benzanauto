@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { COMPANY } from '../../shared/company.js'
 import StatePanel from '../components/ui/StatePanel'
 import {
@@ -1133,6 +1133,7 @@ function VehicleGridCard({
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [token, setToken] = useState(() => getStoredAdminToken())
   const [sessionLoading, setSessionLoading] = useState(() => Boolean(getStoredAdminToken()) && !getStoredAdminUser())
@@ -1267,6 +1268,14 @@ export default function AdminDashboardPage() {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [wizardOpen])
+
+  useEffect(() => {
+    const routeMessage = location.state?.message
+    if (!routeMessage) return
+
+    setFeedback(routeMessage)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.pathname, location.state, navigate])
 
   // Load vehicle makes once per page session. makesFetchedRef prevents the effect
   // from re-running when loadingMakes state changes (which caused stale=true before

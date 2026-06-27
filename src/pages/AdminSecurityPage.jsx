@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AdminPageShell from '../components/admin/AdminPageShell'
 import { useAdminPageSession } from '../hooks/useAdminPageSession'
 import { changeAdminPassword } from '../lib/adminApi'
 
 export default function AdminSecurityPage() {
+  const navigate = useNavigate()
   const sessionState = useAdminPageSession()
   const [searchParams] = useSearchParams()
   const [form, setForm] = useState({
@@ -45,7 +46,17 @@ export default function AdminSecurityPage() {
         newPassword: '',
         confirmPassword: '',
       })
-      setSuccess(response.message ?? 'Tu contraseña se actualizó y las demás sesiones quedaron invalidadas.')
+      const successMessage = response.message ?? 'Tu contraseña se actualizó y las demás sesiones quedaron invalidadas.'
+
+      if (mustRotatePassword) {
+        navigate('/admin', {
+          replace: true,
+          state: { message: successMessage },
+        })
+        return
+      }
+
+      setSuccess(successMessage)
     } catch (submitError) {
       setError(submitError.message ?? 'No se pudo actualizar la contraseña.')
     } finally {
