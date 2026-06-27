@@ -55,6 +55,49 @@ function StatusBadge({ tone = 'neutral', children }) {
   )
 }
 
+function getFirstFieldError(details) {
+  const fieldErrors = details?.fieldErrors
+  if (!fieldErrors || typeof fieldErrors !== 'object') return ''
+
+  for (const messages of Object.values(fieldErrors)) {
+    if (Array.isArray(messages) && messages[0]) {
+      return messages[0]
+    }
+  }
+
+  return ''
+}
+
+function mapFieldErrors(details) {
+  const fieldErrors = details?.fieldErrors
+  if (!fieldErrors || typeof fieldErrors !== 'object') return {}
+
+  return Object.fromEntries(
+    Object.entries(fieldErrors)
+      .filter(([, messages]) => Array.isArray(messages) && messages[0])
+      .map(([key, messages]) => [key, messages[0]]),
+  )
+}
+
+function inputClass(hasError) {
+  return [
+    'w-full rounded-2xl border px-4 py-3 font-body text-sm focus:outline-none',
+    hasError
+      ? 'border-[#ffb7bf] bg-[#FFF7F8] text-[#0A0A0A] focus:border-[#ff9aa7]'
+      : 'border-[#ECECEC] text-[#0A0A0A] focus:border-[#CFCFCF]',
+  ].join(' ')
+}
+
+function FieldError({ message }) {
+  if (!message) return null
+
+  return (
+    <p className="mt-2 font-body text-xs text-[#b31a2b]">
+      {message}
+    </p>
+  )
+}
+
 export default function AdminUsersPage() {
   const sessionState = useAdminPageSession()
   const [filters, setFilters] = useState({
@@ -72,8 +115,10 @@ export default function AdminUsersPage() {
   const [feedback, setFeedback] = useState('')
   const [editorMode, setEditorMode] = useState('create')
   const [form, setForm] = useState(createUserForm())
+  const [formErrors, setFormErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ password: '', mustChangePassword: true })
+  const [passwordFormErrors, setPasswordFormErrors] = useState({})
   const [passwordSaving, setPasswordSaving] = useState(false)
 
   const currentUserId = sessionState.user?.id ?? ''
@@ -149,7 +194,9 @@ export default function AdminUsersPage() {
   const openCreate = () => {
     setEditorMode('create')
     setForm(createUserForm())
+    setFormErrors({})
     setPasswordForm({ password: '', mustChangePassword: true })
+    setPasswordFormErrors({})
     setError('')
     setFeedback('')
   }
@@ -166,7 +213,9 @@ export default function AdminUsersPage() {
       mustChangePassword: Boolean(user.mustChangePassword),
       password: '',
     })
+    setFormErrors({})
     setPasswordForm({ password: '', mustChangePassword: true })
+    setPasswordFormErrors({})
     setError('')
     setFeedback('')
   }
@@ -191,6 +240,7 @@ export default function AdminUsersPage() {
       setSaving(true)
       setError('')
       setFeedback('')
+      setFormErrors({})
 
       if (editorMode === 'create') {
         const response = await createAdminUser(sessionState.token, {
@@ -227,7 +277,9 @@ export default function AdminUsersPage() {
       await refreshUsers()
       setFeedback(response.message ?? 'Usuario actualizado correctamente.')
     } catch (submitError) {
-      setError(submitError.message ?? 'No se pudo guardar el usuario.')
+      const nextFieldErrors = mapFieldErrors(submitError?.details)
+      setFormErrors(nextFieldErrors)
+      setError(getFirstFieldError(submitError?.details) || submitError.message || 'No se pudo guardar el usuario.')
     } finally {
       setSaving(false)
     }
@@ -241,12 +293,15 @@ export default function AdminUsersPage() {
       setPasswordSaving(true)
       setError('')
       setFeedback('')
+      setPasswordFormErrors({})
       const response = await updateAdminUserPassword(sessionState.token, form.id, passwordForm)
       await refreshUsers()
       setFeedback(response.message ?? 'Contraseña del usuario actualizada correctamente.')
       setPasswordForm({ password: '', mustChangePassword: true })
     } catch (submitError) {
-      setError(submitError.message ?? 'No se pudo cambiar la contraseña del usuario.')
+      const nextFieldErrors = mapFieldErrors(submitError?.details)
+      setPasswordFormErrors(nextFieldErrors)
+      setError(getFirstFieldError(submitError?.details) || submitError.message || 'No se pudo cambiar la contraseña del usuario.')
     } finally {
       setPasswordSaving(false)
     }
@@ -442,10 +497,15 @@ export default function AdminUsersPage() {
                   id="user-name"
                   type="text"
                   value={form.name}
-                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                  className="w-full rounded-2xl border border-[#ECECEC] px-4 py-3 font-body text-sm focus:border-[#CFCFCF] focus:outline-none"
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setForm((current) => ({ ...current, name: value }))
+                    setFormErrors((current) => ({ ...current, name: undefined }))
+                  }}
+                  className={inputClass(Boolean(formErrors.name))}
                   required
                 />
+                <FieldError message={formErrors.name} />
               </div>
 
               <div>
@@ -454,10 +514,18 @@ export default function AdminUsersPage() {
                   id="user-username"
                   type="text"
                   value={form.username}
-                  onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-                  className="w-full rounded-2xl border border-[#ECECEC] px-4 py-3 font-body text-sm focus:border-[#CFCFCF] focus:outline-none"
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setForm((current) => ({ ...current, username: value }))
+                    setFormErrors((current) => ({ ...current, username: undefined }))
+                  }}
+                  className={inputClass(Boolean(formErrors.username))}
                   required
                 />
+                <p className="mt-2 font-body text-xs text-[#8A8A8A]">
+                  Usa letras, números, punto, guion o underscore.
+                </p>
+                <FieldError message={formErrors.username} />
               </div>
 
               <div>
@@ -466,10 +534,15 @@ export default function AdminUsersPage() {
                   id="user-email"
                   type="email"
                   value={form.email}
-                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                  className="w-full rounded-2xl border border-[#ECECEC] px-4 py-3 font-body text-sm focus:border-[#CFCFCF] focus:outline-none"
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setForm((current) => ({ ...current, email: value }))
+                    setFormErrors((current) => ({ ...current, email: undefined }))
+                  }}
+                  className={inputClass(Boolean(formErrors.email))}
                   placeholder="Opcional"
                 />
+                <FieldError message={formErrors.email} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -478,13 +551,18 @@ export default function AdminUsersPage() {
                   <select
                     id="user-role"
                     value={form.role}
-                    onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}
-                    className="w-full rounded-2xl border border-[#ECECEC] px-4 py-3 font-body text-sm focus:border-[#CFCFCF] focus:outline-none"
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setForm((current) => ({ ...current, role: value }))
+                      setFormErrors((current) => ({ ...current, role: undefined }))
+                    }}
+                    className={inputClass(Boolean(formErrors.role))}
                   >
                     {ROLE_OPTIONS.map((role) => (
                       <option key={role.value} value={role.value}>{role.label}</option>
                     ))}
                   </select>
+                  <FieldError message={formErrors.role} />
                 </div>
 
                 <div className="flex flex-col justify-end gap-2 pb-1">
@@ -514,10 +592,20 @@ export default function AdminUsersPage() {
                     id="user-password"
                     type="password"
                     value={form.password}
-                    onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                    className="w-full rounded-2xl border border-[#ECECEC] px-4 py-3 font-body text-sm focus:border-[#CFCFCF] focus:outline-none"
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setForm((current) => ({ ...current, password: value }))
+                      setFormErrors((current) => ({ ...current, password: undefined }))
+                    }}
+                    className={inputClass(Boolean(formErrors.password))}
+                    minLength={12}
+                    autoComplete="new-password"
                     required
                   />
+                  <p className="mt-2 font-body text-xs text-[#8A8A8A]">
+                    Mínimo 12 caracteres. Evita usar el usuario o el correo dentro de la contraseña.
+                  </p>
+                  <FieldError message={formErrors.password} />
                 </div>
               ) : null}
 
@@ -549,10 +637,20 @@ export default function AdminUsersPage() {
                     id="reset-user-password"
                     type="password"
                     value={passwordForm.password}
-                    onChange={(event) => setPasswordForm((current) => ({ ...current, password: event.target.value }))}
-                    className="w-full rounded-2xl border border-[#ECECEC] px-4 py-3 font-body text-sm focus:border-[#CFCFCF] focus:outline-none"
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setPasswordForm((current) => ({ ...current, password: value }))
+                      setPasswordFormErrors((current) => ({ ...current, password: undefined }))
+                    }}
+                    className={inputClass(Boolean(passwordFormErrors.password))}
+                    minLength={12}
+                    autoComplete="new-password"
                     required
                   />
+                  <p className="mt-2 font-body text-xs text-[#8A8A8A]">
+                    Mínimo 12 caracteres.
+                  </p>
+                  <FieldError message={passwordFormErrors.password} />
                 </div>
 
                 <label className="inline-flex items-center gap-2 font-body text-sm text-[#666]">

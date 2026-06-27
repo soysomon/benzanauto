@@ -1,11 +1,18 @@
 import { z } from 'zod'
 
 export const trimmedString = (field, { min = 1, max = 255 } = {}) =>
-  z
-    .string({ required_error: `${field} es obligatorio.` })
-    .trim()
-    .min(min, `${field} es obligatorio.`)
-    .max(max, `${field} no puede exceder ${max} caracteres.`)
+  (() => {
+    let schema = z
+      .string({ required_error: `${field} es obligatorio.` })
+      .trim()
+      .min(1, `${field} es obligatorio.`)
+
+    if (min > 1) {
+      schema = schema.min(min, `${field} debe tener al menos ${min} caracteres.`)
+    }
+
+    return schema.max(max, `${field} no puede exceder ${max} caracteres.`)
+  })()
 
 export const optionalTrimmedString = (max = 255) =>
   z
