@@ -25,6 +25,7 @@ import {
   getStoredAdminUser,
   setStoredAdminUser,
 } from '../lib/adminSession'
+import { ApiError, UNAUTHORIZED_EVENT_NAME } from '../lib/apiClient'
 import {
   fetchVehicleEnrichment,
   fetchVehicleMakes,
@@ -558,6 +559,14 @@ function buildPublishChecklist(form, selectedVehicle) {
 }
 
 function formatFriendlyError(error, fallback) {
+  if (import.meta.env.DEV && error?.request) {
+    console.error('[Admin Request Error]', {
+      status: error.status,
+      code: error.code,
+      request: error.request,
+    })
+  }
+
   const fieldErrors = error?.details?.fieldErrors
   if (fieldErrors && typeof fieldErrors === 'object') {
     const firstEntry = Object.values(fieldErrors).find((messages) => Array.isArray(messages) && messages.length > 0)
@@ -1214,6 +1223,29 @@ export default function AdminDashboardPage() {
   }, [navigate, token])
 
   useEffect(() => {
+    const handleUnauthorized = (event) => {
+      if (!token) return
+
+      const message = 'Tu sesión expiró o dejó de ser válida. Vuelve a iniciar sesión para continuar.'
+      const requestInfo = event?.detail?.request
+
+      if (import.meta.env.DEV && requestInfo) {
+        console.error('[Admin Auth] 401 recibido', requestInfo)
+      }
+
+      clearStoredAdminToken()
+      setSession(null)
+      setSessionError(message)
+      setActionError(message)
+      setToken('')
+      navigate('/admin-login', { replace: true })
+    }
+
+    window.addEventListener(UNAUTHORIZED_EVENT_NAME, handleUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT_NAME, handleUnauthorized)
+  }, [navigate, token])
+
+  useEffect(() => {
     document.body.style.overflow = wizardOpen ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [wizardOpen])
@@ -1273,21 +1305,50 @@ export default function AdminDashboardPage() {
     setActionError('')
   }, [wizardStepIndex])
 
-  const loadStats = async () => {
-    if (!token) return
+  const loadStats = async ({ throwOnError = false } = {}) => {
+    if (!token) {
+      if (throwOnError) {
+        throw new ApiError('No hay sesión activa.', {
+          status: 401,
+          code: 'UNAUTHORIZED',
+          request: {
+            method: 'GET',
+            path: '/admin/dashboard/stats',
+            hasAuthorization: false,
+          },
+        })
+      }
+      return null
+    }
     try {
       setStatsLoading(true)
       const response = await getAdminDashboardStats(token)
       setStats(response)
+      return response
     } catch (loadError) {
       setActionError(formatFriendlyError(loadError, 'No se pudieron cargar las métricas.'))
+      if (throwOnError) throw loadError
+      return null
     } finally {
       setStatsLoading(false)
     }
   }
 
-  const loadVehicles = async () => {
-    if (!token) return
+  const loadVehicles = async ({ throwOnError = false } = {}) => {
+    if (!token) {
+      if (throwOnError) {
+        throw new ApiError('No hay sesión activa.', {
+          status: 401,
+          code: 'UNAUTHORIZED',
+          request: {
+            method: 'GET',
+            path: '/admin/vehicles',
+            hasAuthorization: false,
+          },
+        })
+      }
+      return null
+    }
     try {
       setVehiclesLoading(true)
       setVehiclesError('')
@@ -1305,9 +1366,12 @@ export default function AdminDashboardPage() {
 
       const response = await listAdminVehicles(token, params)
       setVehicles(response.data ?? [])
+      return response
     } catch (loadError) {
       setVehicles([])
       setVehiclesError(formatFriendlyError(loadError, 'No se pudo cargar el inventario.'))
+      if (throwOnError) throw loadError
+      return null
     } finally {
       setVehiclesLoading(false)
     }
@@ -1323,8 +1387,11 @@ export default function AdminDashboardPage() {
     void loadVehicles()
   }, [query, session?.user, sessionRefreshing, viewFilter])
 
-  const refreshAll = async () => {
-    await Promise.all([loadVehicles(), loadStats()])
+  const refreshAll = async ({ throwOnError = false } = {}) => {
+    await Promise.all([
+      loadVehicles({ throwOnError }),
+      loadStats({ throwOnError }),
+    ])
   }
 
   const resolvedBrand = useMemo(
@@ -1411,6 +1478,18 @@ export default function AdminDashboardPage() {
       statusOverride: 'draft',
       silent: true,
     })
+  }
+
+  const syncAfterMutation = async ({ vehicle = null, syncForm = false, successMessage = '' } = {}) => {
+    if (vehicle) {
+      applyVehicleSnapshot(vehicle, { syncForm })
+    }
+
+    await refreshAll({ throwOnError: true })
+
+    if (successMessage) {
+      setFeedback(successMessage)
+    }
   }
 
   const openCreateWizard = () => {
@@ -1510,12 +1589,12 @@ export default function AdminDashboardPage() {
         ? await updateAdminVehicle(token, selectedVehicle.id, payload)
         : await createAdminVehicle(token, payload)
 
-      applyVehicleSnapshot(response.vehicle, { syncForm: true })
       setEditorMode('edit')
-      void refreshAll()
-      if (!silent && successMessage) {
-        setFeedback(successMessage)
-      }
+      await syncAfterMutation({
+        vehicle: response.vehicle,
+        syncForm: true,
+        successMessage: !silent ? successMessage : '',
+      })
       return response.vehicle
     } catch (saveError) {
       if (import.meta.env.DEV) {
@@ -1610,13 +1689,16 @@ export default function AdminDashboardPage() {
     try {
       setActionError('')
       setFeedback('')
-      await action()
-      await refreshAll()
+      const response = await action()
+      await refreshAll({ throwOnError: true })
       if (selectedVehicle?.id) {
         const refreshed = await getAdminVehicle(token, selectedVehicle.id).catch(() => null)
         if (refreshed?.vehicle) {
           applyVehicleSnapshot(refreshed.vehicle, { syncForm: true })
         }
+      }
+      if (response?.vehicle) {
+        applyVehicleSnapshot(response.vehicle)
       }
       if (successMessage) setFeedback(successMessage)
     } catch (actionFailure) {
@@ -1642,12 +1724,13 @@ export default function AdminDashboardPage() {
         onProgress: (progress) => setUploadProgress(progress),
       })
 
-      applyVehicleSnapshot(response.vehicle, { syncForm: true })
-      setFeedback(
-        files.length > 1
+      await syncAfterMutation({
+        vehicle: response.vehicle,
+        syncForm: true,
+        successMessage: files.length > 1
           ? `${files.length} imágenes cargadas correctamente.`
           : 'Imagen cargada correctamente.',
-      )
+      })
     } catch (uploadError) {
       setActionError(formatFriendlyError(uploadError, 'No se pudieron cargar las imágenes.'))
     } finally {
@@ -1768,8 +1851,11 @@ export default function AdminDashboardPage() {
       setImageActionKey(`delete:${imageId}`)
       setActionError('')
       const response = await deleteAdminVehicleImage(token, selectedVehicle.id, imageId)
-      applyVehicleSnapshot(response.vehicle, { syncForm: true })
-      setFeedback('Imagen eliminada correctamente.')
+      await syncAfterMutation({
+        vehicle: response.vehicle,
+        syncForm: true,
+        successMessage: 'Imagen eliminada correctamente.',
+      })
     } catch (deleteError) {
       setActionError(formatFriendlyError(deleteError, 'No se pudo eliminar la imagen.'))
     } finally {
@@ -1785,8 +1871,11 @@ export default function AdminDashboardPage() {
       const response = await updateAdminVehicleImagePresentation(token, selectedVehicle.id, {
         mainImageId: imageId,
       })
-      applyVehicleSnapshot(response.vehicle, { syncForm: true })
-      setFeedback('Portada actualizada correctamente.')
+      await syncAfterMutation({
+        vehicle: response.vehicle,
+        syncForm: true,
+        successMessage: 'Portada actualizada correctamente.',
+      })
     } catch (updateError) {
       setActionError(formatFriendlyError(updateError, 'No se pudo actualizar la portada.'))
     } finally {
@@ -1818,8 +1907,11 @@ export default function AdminDashboardPage() {
         imageOrder: reordered.map((image) => image.id),
         mainImageId: orderedImages.find((image) => image.isMain)?.id,
       })
-      applyVehicleSnapshot(response.vehicle, { syncForm: true })
-      setFeedback('Orden de imágenes actualizado.')
+      await syncAfterMutation({
+        vehicle: response.vehicle,
+        syncForm: true,
+        successMessage: 'Orden de imágenes actualizado.',
+      })
     } catch (updateError) {
       setActionError(formatFriendlyError(updateError, 'No se pudo reordenar la galería.'))
     } finally {

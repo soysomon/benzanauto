@@ -1,4 +1,5 @@
 const REQUEST_TIMEOUT_MS = 15_000
+const UNAUTHORIZED_EVENT_NAME = 'benzan:admin-unauthorized'
 
 function normalizeBaseUrl(baseUrl) {
   if (typeof baseUrl !== 'string') return ''
@@ -84,13 +85,69 @@ function parseRawResponseBody(rawBody, contentType = '') {
 }
 
 export class ApiError extends Error {
-  constructor(message, { status = 500, code = 'API_ERROR', details = null } = {}) {
+  constructor(message, { status = 500, code = 'API_ERROR', details = null, request = null } = {}) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.details = details
+    this.request = request
   }
+}
+
+function emitUnauthorizedEvent(request) {
+  if (typeof window === 'undefined') return
+
+  window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT_NAME, {
+    detail: {
+      request,
+      occurredAt: new Date().toISOString(),
+    },
+  }))
+}
+
+function buildRequestMeta({ method, path, token, searchParams, body }) {
+  const request = {
+    method,
+    path,
+    url: buildRequestUrl(path, searchParams),
+    hasAuthorization: Boolean(token),
+  }
+
+  if (!body) return request
+
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    request.body = {
+      type: 'form-data',
+      fields: [...new Set(Array.from(body.keys()))],
+    }
+    return request
+  }
+
+  if (typeof body === 'string') {
+    request.body = {
+      type: 'text',
+      length: body.length,
+    }
+    return request
+  }
+
+  if (body instanceof Blob) {
+    request.body = {
+      type: 'blob',
+      size: body.size,
+    }
+    return request
+  }
+
+  if (typeof body === 'object') {
+    request.body = {
+      type: 'json',
+      keys: Object.keys(body),
+    }
+  }
+
+  return request
 }
 
 export async function apiRequest(path, {
@@ -106,6 +163,7 @@ export async function apiRequest(path, {
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   const finalHeaders = new Headers(headers)
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  const requestMeta = buildRequestMeta({ method, path, token, searchParams, body })
 
   if (token) {
     finalHeaders.set('Authorization', `Bearer ${token}`)
@@ -130,12 +188,16 @@ export async function apiRequest(path, {
 
     if (!response.ok) {
       const errorPayload = data?.error
+      if (response.status === 401 && token) {
+        emitUnauthorizedEvent(requestMeta)
+      }
       throw new ApiError(
         errorPayload?.message ?? data?.message ?? 'No se pudo completar la solicitud.',
         {
           status: response.status,
           code: errorPayload?.code,
           details: errorPayload?.details ?? null,
+          request: requestMeta,
         },
       )
     }
@@ -168,6 +230,7 @@ export function apiUploadRequest(path, {
   onProgress,
 } = {}) {
   return new Promise((resolve, reject) => {
+    const requestMeta = buildRequestMeta({ method, path, token, body })
     const xhr = new XMLHttpRequest()
     xhr.open(method, buildRequestUrl(path))
     xhr.timeout = REQUEST_TIMEOUT_MS
@@ -199,12 +262,16 @@ export function apiUploadRequest(path, {
       }
 
       const errorPayload = data?.error
+      if (xhr.status === 401 && token) {
+        emitUnauthorizedEvent(requestMeta)
+      }
       reject(new ApiError(
         errorPayload?.message ?? data?.message ?? 'No se pudo completar la solicitud.',
         {
           status: xhr.status || 500,
           code: errorPayload?.code,
           details: errorPayload?.details ?? null,
+          request: requestMeta,
         },
       ))
     }
@@ -226,3 +293,5 @@ export function apiUploadRequest(path, {
     xhr.send(body)
   })
 }
+
+export { UNAUTHORIZED_EVENT_NAME }

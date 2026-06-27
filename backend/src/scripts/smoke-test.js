@@ -26,10 +26,12 @@ async function run() {
     { connectDatabase, disconnectDatabase },
     { createApp },
     { createInitialSuperAdmin },
+    { Vehicle },
   ] = await Promise.all([
     import('../config/database.js'),
     import('../app.js'),
     import('../services/auth.service.js'),
+    import('../models/Vehicle.js'),
   ])
 
   try {
@@ -91,18 +93,60 @@ async function run() {
       },
     }).png().toBuffer()
 
+    const secondaryImageBuffer = await sharp({
+      create: {
+        width: 32,
+        height: 32,
+        channels: 3,
+        background: { r: 60, g: 90, b: 120 },
+      },
+    }).png().toBuffer()
+
     const uploadResponse = await request(app)
       .post(`/api/admin/vehicles/${vehicleId}/images`)
       .set('Authorization', `Bearer ${token}`)
       .attach('images', imageBuffer, { filename: 'vehicle.png', contentType: 'image/png' })
+      .attach('images', secondaryImageBuffer, { filename: 'vehicle-2.png', contentType: 'image/png' })
 
     assert.equal(uploadResponse.status, 201)
+    assert.equal(uploadResponse.body.vehicle.id, vehicleId)
+    assert.equal(uploadResponse.body.vehicle.images.length, 2)
+
+    const [firstImage, secondImage] = uploadResponse.body.vehicle.images
+    assert.ok(firstImage.id)
+    assert.ok(secondImage.id)
+    assert.ok(uploadResponse.body.vehicle.mainImage)
+
+    const coverResponse = await request(app)
+      .put(`/api/admin/vehicles/${vehicleId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        mainImageId: secondImage.id,
+        imageOrder: [secondImage.id, firstImage.id],
+      })
+
+    assert.equal(coverResponse.status, 200)
+    assert.equal(coverResponse.body.vehicle.images[0].id, secondImage.id)
+    assert.equal(coverResponse.body.vehicle.images[0].isMain, true)
+    assert.equal(coverResponse.body.vehicle.mainImage, secondImage.url)
 
     const publishResponse = await request(app)
       .patch(`/api/admin/vehicles/${vehicleId}/publish`)
       .set('Authorization', `Bearer ${token}`)
 
     assert.equal(publishResponse.status, 200)
+    assert.equal(publishResponse.body.vehicle.status, 'published')
+    assert.ok(publishResponse.body.vehicle.publishedAt)
+    assert.equal(publishResponse.body.vehicle.mainImage, secondImage.url)
+
+    const storedVehicle = await Vehicle.findById(vehicleId).lean()
+    assert.ok(storedVehicle)
+    assert.equal(storedVehicle.status, 'published')
+    assert.ok(storedVehicle.slug)
+    assert.ok(storedVehicle.publishedAt)
+    assert.equal(storedVehicle.images.length, 2)
+    assert.equal(storedVehicle.mainImage, secondImage.url)
+    assert.equal(storedVehicle.images.find((image) => image.isMain)?.url, secondImage.url)
 
     const featureResponse = await request(app)
       .patch(`/api/admin/vehicles/${vehicleId}/featured`)
@@ -120,6 +164,9 @@ async function run() {
     const detailResponse = await request(app).get(`/api/vehicles/${slug}`)
     assert.equal(detailResponse.status, 200)
     assert.equal(detailResponse.body.vehicle.slug, slug)
+    assert.equal(detailResponse.body.vehicle.status, 'Nuevo')
+    assert.equal(detailResponse.body.vehicle.mainImage, secondImage.url)
+    assert.equal(detailResponse.body.vehicle.images[0].id, secondImage.id)
 
     const contactResponse = await request(app).post(`/api/vehicles/${slug}/contact`)
     assert.equal(contactResponse.status, 200)
