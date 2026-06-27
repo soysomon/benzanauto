@@ -26,20 +26,34 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     unique: true,
   },
-  passwordHash: {
-    type: String,
-    required: true,
-  },
   role: {
     type: String,
     enum: ROLES,
     required: true,
     default: 'viewer',
   },
+  passwordHash: {
+    type: String,
+    required: true,
+  },
   isActive: {
     type: Boolean,
     default: true,
     index: true,
+  },
+  isBlocked: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  failedLoginAttempts: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  lockedUntil: {
+    type: Date,
+    default: null,
   },
   lastLoginAt: {
     type: Date,
@@ -49,9 +63,9 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-  tokenVersion: {
-    type: Number,
-    default: 0,
+  mustChangePassword: {
+    type: Boolean,
+    default: false,
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -63,12 +77,58 @@ const userSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  deletedAt: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  resetPasswordTokenHash: {
+    type: String,
+    default: null,
+  },
+  resetPasswordExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  resetPasswordUsedAt: {
+    type: Date,
+    default: null,
+  },
+  resetPasswordRequestedAt: {
+    type: Date,
+    default: null,
+  },
+  mfaEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  mfaSecret: {
+    type: String,
+    default: null,
+  },
+  recoveryCodesHash: {
+    type: [String],
+    default: [],
+  },
+  tokenVersion: {
+    type: Number,
+    default: 0,
+  },
 }, {
   timestamps: true,
 })
 
 userSchema.methods.comparePassword = function comparePassword(password) {
   return bcrypt.compare(password, this.passwordHash)
+}
+
+userSchema.methods.isTemporarilyLocked = function isTemporarilyLocked() {
+  return this.lockedUntil instanceof Date && this.lockedUntil.getTime() > Date.now()
 }
 
 userSchema.methods.toSafeJSON = function toSafeJSON() {
@@ -79,11 +139,18 @@ userSchema.methods.toSafeJSON = function toSafeJSON() {
     email: this.email || null,
     role: this.role,
     isActive: this.isActive,
+    isBlocked: this.isBlocked,
+    failedLoginAttempts: this.failedLoginAttempts ?? 0,
+    lockedUntil: this.lockedUntil,
     lastLoginAt: this.lastLoginAt,
+    passwordChangedAt: this.passwordChangedAt,
+    mustChangePassword: this.mustChangePassword,
+    deletedAt: this.deletedAt,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
   }
 }
 
-export const User = mongoose.models.User || mongoose.model('User', userSchema)
+userSchema.index({ role: 1, isActive: 1, deletedAt: 1 })
 
+export const User = mongoose.models.User || mongoose.model('User', userSchema)

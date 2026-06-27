@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { COMPANY } from '../../shared/company.js'
 import StatePanel from '../components/ui/StatePanel'
 import {
@@ -1289,6 +1289,7 @@ export default function AdminDashboardPage() {
   }, [wizardOpen])
 
   const userRole = session?.user?.role ?? 'viewer'
+  const isSuperadmin = userRole === 'superadmin'
   const canManageVehicles = roleCanManageVehicles(userRole)
   const canDeleteVehicles = roleCanDeleteVehicles(userRole)
   const currentStep = WIZARD_STEPS[wizardStepIndex]
@@ -2191,6 +2192,35 @@ export default function AdminDashboardPage() {
               Hola, {session.user.name.split(' ')[0]}.
             </h1>
             <p className="font-body text-base text-[#AAA] mt-5">{summaryLine}</p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link
+                to="/admin/security"
+                className="rounded-full border border-black/10 px-4 py-2 font-body text-sm text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-colors"
+              >
+                Seguridad de la cuenta
+              </Link>
+              {isSuperadmin ? (
+                <>
+                  <Link
+                    to="/admin/users"
+                    className="rounded-full border border-black/10 px-4 py-2 font-body text-sm text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-colors"
+                  >
+                    Gestionar usuarios
+                  </Link>
+                  <Link
+                    to="/admin/audit"
+                    className="rounded-full border border-black/10 px-4 py-2 font-body text-sm text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-colors"
+                  >
+                    Ver auditoría
+                  </Link>
+                </>
+              ) : null}
+            </div>
+            {session.user.mustChangePassword ? (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 font-body text-sm text-amber-800 max-w-2xl">
+                Esta cuenta debe cambiar su contraseña antes de seguir operando normalmente.
+              </div>
+            ) : null}
           </div>
 
           {/* Metrics */}

@@ -15,6 +15,11 @@ import Nosotros from './pages/Nosotros'
 import Contacto from './pages/Contacto'
 import AdminLoginPage from './pages/AdminLoginPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
+import AdminForgotPasswordPage from './pages/AdminForgotPasswordPage'
+import AdminResetPasswordPage from './pages/AdminResetPasswordPage'
+import AdminUsersPage from './pages/AdminUsersPage'
+import AdminAuditPage from './pages/AdminAuditPage'
+import AdminSecurityPage from './pages/AdminSecurityPage'
 
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
@@ -61,8 +66,13 @@ function AnimatedRoutes() {
             <Route path="/contacto" element={<Contacto />} />
             <Route path="/login" element={<Navigate to="/admin-login" replace />} />
             <Route path="/admin-login" element={<AdminLoginPage />} />
+            <Route path="/admin/forgot-password" element={<AdminForgotPasswordPage />} />
+            <Route path="/admin/reset-password" element={<AdminResetPasswordPage />} />
             <Route path="/dashboard" element={<Navigate to="/admin" replace />} />
             <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/audit" element={<AdminAuditPage />} />
+            <Route path="/admin/security" element={<AdminSecurityPage />} />
           </Routes>
         </motion.div>
       </AnimatePresence>

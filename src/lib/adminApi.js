@@ -7,6 +7,27 @@ export function loginAdmin(credentials) {
   })
 }
 
+export function forgotAdminPassword(payload) {
+  return apiRequest('/admin/auth/forgot-password', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function validateAdminResetPasswordToken(token) {
+  return apiRequest('/admin/auth/reset-password/validate', {
+    method: 'POST',
+    body: { token },
+  })
+}
+
+export function resetAdminPassword(payload) {
+  return apiRequest('/admin/auth/reset-password', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
 export function getAdminMe(token) {
   return apiRequest('/admin/auth/me', { token })
 }
@@ -18,8 +39,95 @@ export function logoutAdmin(token) {
   })
 }
 
+export function changeAdminPassword(token, payload) {
+  return apiRequest('/admin/auth/change-password', {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
 export function getAdminDashboardStats(token) {
   return apiRequest('/admin/dashboard/stats', { token })
+}
+
+export function listAdminUsers(token, params = {}) {
+  return apiRequest('/admin/users', {
+    token,
+    searchParams: params,
+  })
+}
+
+export function getAdminUser(token, id) {
+  return apiRequest(`/admin/users/${id}`, { token })
+}
+
+export function createAdminUser(token, payload) {
+  return apiRequest('/admin/users', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}
+
+export function updateAdminUser(token, id, payload) {
+  return apiRequest(`/admin/users/${id}`, {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
+export function updateAdminUserPassword(token, id, payload) {
+  return apiRequest(`/admin/users/${id}/password`, {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
+export function updateAdminUserStatus(token, id, payload) {
+  return apiRequest(`/admin/users/${id}/status`, {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
+export function updateAdminUserRole(token, id, payload) {
+  return apiRequest(`/admin/users/${id}/role`, {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
+export function blockAdminUser(token, id) {
+  return apiRequest(`/admin/users/${id}/block`, {
+    method: 'PATCH',
+    token,
+  })
+}
+
+export function unblockAdminUser(token, id) {
+  return apiRequest(`/admin/users/${id}/unblock`, {
+    method: 'PATCH',
+    token,
+  })
+}
+
+export function deleteAdminUser(token, id) {
+  return apiRequest(`/admin/users/${id}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+export function listAdminAuditLogs(token, params = {}) {
+  return apiRequest('/admin/audit', {
+    token,
+    searchParams: params,
+  })
 }
 
 export function listAdminVehicles(token, params = {}) {

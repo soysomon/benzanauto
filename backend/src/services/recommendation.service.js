@@ -1,5 +1,4 @@
 import { COMPANY, buildMapsUrl, buildWhatsAppUrl } from '../config/company.js'
-import { vehicles } from '../data/inventory.js'
 import { getUsdToDopRate, normalizeText } from './context.service.js'
 
 const MAX_RECOMMENDATIONS = 3
@@ -43,7 +42,7 @@ function equalIdLists(a = [], b = []) {
 function matchesTransmission(vehicle, transmission) {
   if (!transmission) return true
 
-  const normalizedVehicleTransmission = normalizeText(vehicle.transmission)
+  const normalizedVehicleTransmission = normalizeText(vehicle.transmission ?? '')
   const normalizedRequested = normalizeText(transmission)
 
   if (normalizedRequested === 'automatico' || normalizedRequested === 'automático') {
@@ -60,7 +59,7 @@ function matchesTransmission(vehicle, transmission) {
 function matchesDrivetrain(vehicle, drivetrain) {
   if (!drivetrain) return true
 
-  const normalizedVehicleTraction = normalizeText(vehicle.traction)
+  const normalizedVehicleTraction = normalizeText(vehicle.traction ?? vehicle.drivetrain ?? '')
   const normalizedRequested = normalizeText(drivetrain)
 
   if (normalizedRequested === '4x4') {
@@ -70,14 +69,54 @@ function matchesDrivetrain(vehicle, drivetrain) {
   return normalizedVehicleTraction.includes(normalizedRequested)
 }
 
-function getVehicleById(id) {
-  return vehicles.find((vehicle) => vehicle.id === id) ?? null
+function getVehicleById(id, inventory = []) {
+  const normalizedId = String(id ?? '').trim()
+  if (!normalizedId) return null
+
+  return inventory.find((vehicle) => (
+    vehicle.id === normalizedId
+    || String(vehicle.legacyId ?? '') === normalizedId
+    || String(vehicle.slug ?? '') === normalizedId
+  )) ?? null
 }
 
-function getVehiclesByIds(ids = []) {
+function getVehiclesByIds(ids = [], inventory = []) {
   return ids
-    .map((id) => getVehicleById(id))
+    .map((id) => getVehicleById(id, inventory))
     .filter(Boolean)
+}
+
+function getPassengerCapacity(vehicle) {
+  if (Number.isFinite(vehicle.passengerCapacity) && vehicle.passengerCapacity > 0) {
+    return vehicle.passengerCapacity
+  }
+
+  const rawCapacity = vehicle?.specs?.capacidad
+
+  if (typeof rawCapacity === 'number' && Number.isFinite(rawCapacity) && rawCapacity > 0) {
+    return rawCapacity
+  }
+
+  if (typeof rawCapacity === 'string') {
+    const match = rawCapacity.match(/(\d{1,2})/)
+    if (match) {
+      const parsed = Number.parseInt(match[1], 10)
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed
+      }
+    }
+  }
+
+  return null
+}
+
+function getPassengerCapacityLabel(vehicle) {
+  const capacity = getPassengerCapacity(vehicle)
+  return capacity ? `${capacity} pasajeros` : 'capacidad no especificada'
+}
+
+function getConditionLabel(vehicle) {
+  return vehicle.condition ?? vehicle.status ?? 'Disponible'
 }
 
 function getCategoryFromIntent(intent, context) {
@@ -95,7 +134,10 @@ function buildReason(vehicle, context, intent, isAlternative = false) {
   }
 
   if (intent === 'family_vehicle' || context.usage === 'familiar') {
-    parts.push(`${vehicle.specs.capacidad} pasajeros`)
+    const capacityLabel = getPassengerCapacityLabel(vehicle)
+    if (capacityLabel !== 'capacidad no especificada') {
+      parts.push(capacityLabel)
+    }
   }
 
   if (context.vehicleType && vehicle.category === context.vehicleType) {
@@ -121,6 +163,7 @@ function buildReason(vehicle, context, intent, isAlternative = false) {
 
 function scoreVehicle(vehicle, context, intent) {
   let score = 0
+  const passengerCapacity = getPassengerCapacity(vehicle)
 
   if (context.preferredBrand && vehicle.brand === context.preferredBrand) score += 32
   if (context.fuelType && context.fuelType !== 'Eléctrico' && vehicle.fuel === context.fuelType) score += 28
@@ -131,7 +174,7 @@ function scoreVehicle(vehicle, context, intent) {
   if (desiredCategory && vehicle.category === desiredCategory) score += 34
 
   if (intent === 'family_vehicle' || context.usage === 'familiar') {
-    score += vehicle.specs.capacidad >= 7 ? 30 : vehicle.specs.capacidad >= 5 ? 18 : -20
+    score += passengerCapacity >= 7 ? 30 : passengerCapacity >= 5 ? 18 : passengerCapacity === null ? 0 : -20
     score += vehicle.category === 'SUV' ? 14 : 0
   }
 
@@ -157,26 +200,32 @@ function scoreVehicle(vehicle, context, intent) {
     score += vehicle.price <= context.budgetUsd ? 16 : -Math.min(42, Math.ceil((vehicle.price - context.budgetUsd) / 5000))
   }
 
-  score += vehicle.status === 'Nuevo' ? 4 : 0
+  score += getConditionLabel(vehicle) === 'Nuevo' ? 4 : 0
   score += Math.max(0, vehicle.year - 2021)
 
   return score
 }
 
-function applyBaseFilters(intent, context, options = {}) {
+function applyBaseFilters(intent, context, inventory = [], options = {}) {
   const desiredCategory = getCategoryFromIntent(intent, context)
   const ignoreBudget = options.ignoreBudget === true
   const allowElectricFallback = options.allowElectricFallback === true
 
-  return vehicles.filter((vehicle) => {
+  return inventory.filter((vehicle) => {
     if (desiredCategory && vehicle.category !== desiredCategory) return false
     if (context.preferredBrand && vehicle.brand !== context.preferredBrand) return false
     if (context.transmission && !matchesTransmission(vehicle, context.transmission)) return false
     if (context.drivetrain && !matchesDrivetrain(vehicle, context.drivetrain)) return false
     if (context.fuelType && context.fuelType !== 'Eléctrico' && vehicle.fuel !== context.fuelType) return false
     if (context.fuelType === 'Eléctrico' && !allowElectricFallback) return false
-    if (intent === 'family_vehicle' && vehicle.specs.capacidad < 5) return false
-    if (context.usage === 'familiar' && vehicle.specs.capacidad < 5) return false
+    if (intent === 'family_vehicle') {
+      const passengerCapacity = getPassengerCapacity(vehicle)
+      if (passengerCapacity !== null && passengerCapacity < 5) return false
+    }
+    if (context.usage === 'familiar') {
+      const passengerCapacity = getPassengerCapacity(vehicle)
+      if (passengerCapacity !== null && passengerCapacity < 5) return false
+    }
     if (!ignoreBudget && context.budgetUsd && vehicle.price > context.budgetUsd) return false
     return true
   })
@@ -194,19 +243,24 @@ function rankVehicles(candidateVehicles, context, intent) {
 function serializeVehicle(vehicle, context, intent, isAlternative = false) {
   return {
     id: vehicle.id,
+    legacyId: vehicle.legacyId ?? null,
+    slug: vehicle.slug ?? null,
     brand: vehicle.brand,
     model: vehicle.model,
     year: vehicle.year,
     price: vehicle.price,
     image: vehicle.image,
+    mainImage: vehicle.mainImage ?? vehicle.image,
     category: vehicle.category,
     transmission: vehicle.transmission,
     fuel: vehicle.fuel,
     traction: vehicle.traction,
     status: vehicle.status,
+    condition: getConditionLabel(vehicle),
     badge: vehicle.badge,
     description: vehicle.description,
     specs: vehicle.specs,
+    passengerCapacity: getPassengerCapacity(vehicle),
     reason: buildReason(vehicle, context, intent, isAlternative),
   }
 }
@@ -314,7 +368,7 @@ function buildVehicleDetailsReply(vehicle) {
 
   return [
     `El ${vehicle.brand} ${vehicle.model} ${vehicle.year} está en ${formatUsd(vehicle.price)}.`,
-    `Es un ${vehicle.category} ${vehicle.fuel}, transmisión ${vehicle.transmission}, tracción ${vehicle.traction} y capacidad para ${vehicle.specs.capacidad} pasajeros.`,
+    `Es un ${vehicle.category} ${vehicle.fuel}, transmisión ${vehicle.transmission}, tracción ${vehicle.traction} y ${getPassengerCapacityLabel(vehicle)}.`,
     `${vehicle.description} Si quieres, también te lo comparo con otra opción del inventario o te digo si conviene más para familia, ciudad o trabajo.`,
   ].join('\n\n')
 }
@@ -330,8 +384,8 @@ function buildComparisonReply(referenceVehicles) {
   const [first, second, third] = referenceVehicles
   const lines = [
     `Te hago una comparación rápida entre ${first.brand} ${first.model} ${first.year} (${formatUsd(first.price)}) y ${second.brand} ${second.model} ${second.year} (${formatUsd(second.price)}).`,
-    `${first.brand} ${first.model}: ${first.category}, ${first.fuel}, ${first.traction} y ${first.specs.capacidad} pasajeros.`,
-    `${second.brand} ${second.model}: ${second.category}, ${second.fuel}, ${second.traction} y ${second.specs.capacidad} pasajeros.`,
+    `${first.brand} ${first.model}: ${first.category}, ${first.fuel}, ${first.traction} y ${getPassengerCapacityLabel(first)}.`,
+    `${second.brand} ${second.model}: ${second.category}, ${second.fuel}, ${second.traction} y ${getPassengerCapacityLabel(second)}.`,
   ]
 
   if (third) {
@@ -364,7 +418,7 @@ function buildVehicleListReply(referenceVehicles, intent, context) {
     const vehicle = referenceVehicles[0]
     return [
       `El vehículo de mayor precio disponible actualmente es el ${vehicle.brand} ${vehicle.model} ${vehicle.year}, con precio de ${formatUsd(vehicle.price)}.`,
-      `Es una propuesta premium dentro del inventario, con configuración ${vehicle.fuel}, tracción ${vehicle.traction} y capacidad para ${vehicle.specs.capacidad} pasajeros.`,
+      `Es una propuesta premium dentro del inventario, con configuración ${vehicle.fuel}, tracción ${vehicle.traction} y ${getPassengerCapacityLabel(vehicle)}.`,
       `Si quieres, también te lo comparo con otras opciones de lujo o familiares para ver cuál te conviene más.`,
     ].join('\n\n')
   }
@@ -446,7 +500,7 @@ function buildPromptFacts({ intent, context, referenceVehicles, fallbackReply, n
 
   const vehicleFacts = referenceVehicles.length > 0
     ? referenceVehicles.map((vehicle, index) => (
-      `${index + 1}. ${vehicle.brand} ${vehicle.model} ${vehicle.year} | ${formatUsd(vehicle.price)} | ${vehicle.category} | ${vehicle.fuel} | ${vehicle.traction} | ${vehicle.transmission} | ${vehicle.specs.capacidad} pasajeros`
+      `${index + 1}. ${vehicle.brand} ${vehicle.model} ${vehicle.year} | ${formatUsd(vehicle.price)} | ${vehicle.category} | ${vehicle.fuel} | ${vehicle.traction} | ${vehicle.transmission} | ${getPassengerCapacityLabel(vehicle)}`
     ))
     : ['No hay vehiculos recomendados para mostrar en esta respuesta.']
 
@@ -476,7 +530,7 @@ function dedupeRecommendedVehicles(intent, referenceVehicles, currentContext) {
   return serialized
 }
 
-export function getRecommendationResponse({ intent, message, currentContext, updatedContext, signals }) {
+export function getRecommendationResponse({ intent, message, currentContext, updatedContext, signals, inventory = [] }) {
   const referenceVehicles = []
   let recommendedVehicles = []
   let fallbackReply = ''
@@ -484,7 +538,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
 
   if (updatedContext.fuelType === 'Eléctrico') {
     const hybridAlternatives = rankVehicles(
-      vehicles.filter((vehicle) => vehicle.fuel === 'Híbrido'),
+      inventory.filter((vehicle) => vehicle.fuel === 'Híbrido'),
       { ...updatedContext, fuelType: 'Híbrido' },
       'inventory_search',
     )
@@ -511,7 +565,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
 
   switch (intent) {
     case 'cheapest_vehicle': {
-      const results = applyBaseFilters(intent, updatedContext, { ignoreBudget: true })
+      const results = applyBaseFilters(intent, updatedContext, inventory, { ignoreBudget: true })
         .sort((a, b) => a.price - b.price || b.year - a.year)
         .slice(0, 1)
 
@@ -522,7 +576,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
     }
 
     case 'most_expensive_vehicle': {
-      const results = applyBaseFilters(intent, updatedContext, { ignoreBudget: true })
+      const results = applyBaseFilters(intent, updatedContext, inventory, { ignoreBudget: true })
         .sort((a, b) => b.price - a.price || b.year - a.year)
         .slice(0, 1)
 
@@ -533,7 +587,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
     }
 
     case 'budget_search': {
-      const basePool = applyBaseFilters(intent, updatedContext, { ignoreBudget: true })
+      const basePool = applyBaseFilters(intent, updatedContext, inventory, { ignoreBudget: true })
       const exactMatches = rankVehicles(
         basePool.filter((vehicle) => !updatedContext.budgetUsd || vehicle.price <= updatedContext.budgetUsd),
         updatedContext,
@@ -563,13 +617,13 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
     case 'family_vehicle':
     case 'inventory_search': {
       const exactMatches = rankVehicles(
-        applyBaseFilters(intent, updatedContext),
+        applyBaseFilters(intent, updatedContext, inventory),
         updatedContext,
         intent,
       ).slice(0, MAX_RECOMMENDATIONS)
 
       const relaxedMatches = rankVehicles(
-        applyBaseFilters(intent, updatedContext, { ignoreBudget: true }),
+        applyBaseFilters(intent, updatedContext, inventory, { ignoreBudget: true }),
         updatedContext,
         intent,
       ).slice(0, MAX_RECOMMENDATIONS)
@@ -601,7 +655,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
           ? updatedContext.requestedVehicleIds
           : updatedContext.lastRecommendedVehicleIds.slice(0, 2)
 
-      const comparisonVehicles = getVehiclesByIds(comparisonIds).slice(0, MAX_RECOMMENDATIONS)
+      const comparisonVehicles = getVehiclesByIds(comparisonIds, inventory).slice(0, MAX_RECOMMENDATIONS)
       referenceVehicles.push(...comparisonVehicles.map((vehicle) => serializeVehicle(vehicle, updatedContext, intent)))
       fallbackReply = buildComparisonReply(comparisonVehicles)
       note = 'Comparar solo vehiculos reales del inventario mencionados o sugeridos previamente.'
@@ -615,6 +669,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
           : updatedContext.requestedVehicleIds.length > 0
             ? updatedContext.requestedVehicleIds
             : updatedContext.lastRecommendedVehicleIds.slice(0, 1),
+        inventory,
       )[0]
 
       if (detailVehicle) {
@@ -627,7 +682,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
     }
 
     case 'financing_question': {
-      const financingVehicles = getVehiclesByIds(updatedContext.lastRecommendedVehicleIds).slice(0, MAX_RECOMMENDATIONS)
+      const financingVehicles = getVehiclesByIds(updatedContext.lastRecommendedVehicleIds, inventory).slice(0, MAX_RECOMMENDATIONS)
       referenceVehicles.push(...financingVehicles.map((vehicle) => serializeVehicle(vehicle, updatedContext, intent)))
       fallbackReply = buildFinancingReply(updatedContext, financingVehicles)
       note = 'No prometer aprobacion; orientar con inicial y rango de cuota.'
@@ -639,6 +694,7 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
         signals.requestedVehicleIds.length > 0
           ? signals.requestedVehicleIds
           : updatedContext.lastRecommendedVehicleIds.slice(0, 1),
+        inventory,
       )
       referenceVehicles.push(...appointmentVehicles.map((vehicle) => serializeVehicle(vehicle, updatedContext, intent)))
       fallbackReply = buildAppointmentReply(appointmentVehicles)

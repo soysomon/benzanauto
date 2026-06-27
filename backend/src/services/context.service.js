@@ -1,5 +1,3 @@
-import { vehicles } from '../data/inventory.js'
-
 const USD_TO_DOP = Number.parseFloat(process.env.USD_TO_DOP ?? '60')
 
 const VEHICLE_TYPE_ALIASES = {
@@ -42,8 +40,6 @@ const FOLLOW_UP_HINTS = [
   'de esas', 'de esos', 'de lo que me mostraste', 'de lo que me enseñaste',
   'esa misma', 'ese mismo',
 ]
-
-const KNOWN_BRANDS = [...new Set(vehicles.map((vehicle) => vehicle.brand))]
 
 export const DEFAULT_CHAT_CONTEXT = Object.freeze({
   budgetUsd: null,
@@ -153,8 +149,16 @@ function parseAliasValue(text, aliases) {
   return null
 }
 
-function parseBrand(text) {
-  for (const brand of KNOWN_BRANDS) {
+function getKnownBrands(inventory = []) {
+  return [...new Set(
+    inventory
+      .map((vehicle) => vehicle?.brand)
+      .filter((brand) => typeof brand === 'string' && brand.trim()),
+  )]
+}
+
+function parseBrand(text, inventory = []) {
+  for (const brand of getKnownBrands(inventory)) {
     if (text.includes(normalizeText(brand))) {
       return brand
     }
@@ -173,31 +177,72 @@ function parseUsage(text) {
   return null
 }
 
-function parseRequestedVehicles(message) {
+function sanitizeStoredVehicleIds(value) {
+  if (!Array.isArray(value)) return []
+
+  return [...new Set(
+    value
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean),
+  )]
+}
+
+function vehicleMatchesIdentifier(vehicle, identifier) {
+  const normalizedIdentifier = String(identifier ?? '').trim()
+  if (!normalizedIdentifier) return false
+
+  return vehicle.id === normalizedIdentifier
+    || String(vehicle.legacyId ?? '') === normalizedIdentifier
+    || String(vehicle.slug ?? '') === normalizedIdentifier
+}
+
+function toInventoryVehicleIds(ids, inventory = []) {
+  const sourceIds = sanitizeStoredVehicleIds(ids)
+  if (!sourceIds.length || !inventory.length) return []
+
+  const matched = []
+
+  for (const id of sourceIds) {
+    const vehicle = inventory.find((item) => vehicleMatchesIdentifier(item, id))
+    if (vehicle) {
+      matched.push(vehicle.id)
+    }
+  }
+
+  return [...new Set(matched)]
+}
+
+function parseRequestedVehicles(message, inventory = []) {
   const normalizedMessage = normalizeText(message)
   const matched = []
 
-  for (const vehicle of vehicles) {
+  for (const vehicle of inventory) {
     const fullName = normalizeText(`${vehicle.brand} ${vehicle.model}`)
     const modelName = normalizeText(vehicle.model)
-    const byId = normalizedMessage.includes(`id ${vehicle.id}`) || normalizedMessage.includes(`id:${vehicle.id}`) || normalizedMessage.includes(`vehiculo ${vehicle.id}`) || normalizedMessage.includes(`vehículo ${vehicle.id}`)
+    const slug = normalizeText(vehicle.slug ?? '')
+    const legacyId = vehicle.legacyId ? String(vehicle.legacyId) : ''
+    const objectId = String(vehicle.id)
+    const byLegacyId = legacyId && (
+      normalizedMessage.includes(`id ${legacyId}`)
+      || normalizedMessage.includes(`id:${legacyId}`)
+      || normalizedMessage.includes(`vehiculo ${legacyId}`)
+      || normalizedMessage.includes(`vehículo ${legacyId}`)
+    )
+    const byObjectId = normalizedMessage.includes(`id ${normalizeText(objectId)}`)
+      || normalizedMessage.includes(`id:${normalizeText(objectId)}`)
 
-    if (byId || normalizedMessage.includes(fullName) || normalizedMessage.includes(modelName)) {
+    if (
+      byLegacyId
+      || byObjectId
+      || (slug && normalizedMessage.includes(slug))
+      || normalizedMessage.includes(fullName)
+      || normalizedMessage.includes(modelName)
+    ) {
       matched.push(vehicle)
     }
   }
 
   return [...new Map(matched.map((vehicle) => [vehicle.id, vehicle])).values()]
-}
-
-function sanitizeVehicleIds(value) {
-  if (!Array.isArray(value)) return []
-
-  return [...new Set(
-    value
-      .map((item) => Number.parseInt(item, 10))
-      .filter((item) => Number.isInteger(item) && vehicles.some((vehicle) => vehicle.id === item)),
-  )]
 }
 
 function sanitizeNullableString(value) {
@@ -220,17 +265,17 @@ export function normalizeChatContext(rawContext = {}) {
     wantsFinancing: sanitizeNullableBoolean(rawContext?.wantsFinancing),
     fuelType: sanitizeNullableString(rawContext?.fuelType),
     drivetrain: sanitizeNullableString(rawContext?.drivetrain),
-    requestedVehicleIds: sanitizeVehicleIds(rawContext?.requestedVehicleIds),
+    requestedVehicleIds: sanitizeStoredVehicleIds(rawContext?.requestedVehicleIds),
     lastIntent: sanitizeNullableString(rawContext?.lastIntent),
-    lastRecommendedVehicleIds: sanitizeVehicleIds(rawContext?.lastRecommendedVehicleIds),
+    lastRecommendedVehicleIds: sanitizeStoredVehicleIds(rawContext?.lastRecommendedVehicleIds),
   }
 }
 
-export function extractMessageSignals(message) {
+export function extractMessageSignals(message, inventory = []) {
   const rawMessage = String(message ?? '').trim()
   const normalizedMessage = normalizeText(rawMessage)
   const budget = parseBudget(rawMessage)
-  const requestedVehicles = parseRequestedVehicles(rawMessage)
+  const requestedVehicles = parseRequestedVehicles(rawMessage, inventory)
 
   return {
     rawMessage,
@@ -241,7 +286,7 @@ export function extractMessageSignals(message) {
     budgetDisplay: budget.budgetDisplay,
     vehicleType: parseAliasValue(normalizedMessage, VEHICLE_TYPE_ALIASES),
     transmission: parseAliasValue(normalizedMessage, TRANSMISSION_ALIASES),
-    preferredBrand: parseBrand(normalizedMessage),
+    preferredBrand: parseBrand(normalizedMessage, inventory),
     usage: parseUsage(normalizedMessage),
     wantsFinancing: includesAny(normalizedMessage, ['financiar', 'financiamiento', 'cuota', 'inicial', 'prestamo', 'préstamo'])
       ? true
@@ -315,9 +360,9 @@ function getSuspendedFields(intent) {
   }
 }
 
-export function resolveConversationContext({ message, intent, currentContext }) {
+export function resolveConversationContext({ message, intent, currentContext, inventory = [] }) {
   const normalizedContext = normalizeChatContext(currentContext)
-  const signals = extractMessageSignals(message)
+  const signals = extractMessageSignals(message, inventory)
   const carryForward = shouldCarryForwardContext({ intent, signals, currentContext: normalizedContext })
   const suspendedFields = getSuspendedFields(intent)
   const baseContext = carryForward
@@ -334,7 +379,11 @@ export function resolveConversationContext({ message, intent, currentContext }) 
       : DEFAULT_CHAT_CONTEXT[field]
   }
 
-  const updatedContext = { ...baseContext }
+  const updatedContext = {
+    ...baseContext,
+    requestedVehicleIds: toInventoryVehicleIds(baseContext.requestedVehicleIds, inventory),
+    lastRecommendedVehicleIds: toInventoryVehicleIds(baseContext.lastRecommendedVehicleIds, inventory),
+  }
 
   if (signals.budgetUsd !== null) {
     updatedContext.budgetUsd = signals.budgetUsd
@@ -349,9 +398,12 @@ export function resolveConversationContext({ message, intent, currentContext }) 
   if (signals.fuelType) updatedContext.fuelType = signals.fuelType
   if (signals.drivetrain) updatedContext.drivetrain = signals.drivetrain
   if (signals.wantsFinancing !== null) updatedContext.wantsFinancing = signals.wantsFinancing
-  if (signals.requestedVehicleIds.length) updatedContext.requestedVehicleIds = signals.requestedVehicleIds
+  if (signals.requestedVehicleIds.length) {
+    updatedContext.requestedVehicleIds = toInventoryVehicleIds(signals.requestedVehicleIds, inventory)
+  }
 
   updatedContext.lastIntent = intent
+  updatedContext.lastRecommendedVehicleIds = toInventoryVehicleIds(updatedContext.lastRecommendedVehicleIds, inventory)
 
   return {
     signals,

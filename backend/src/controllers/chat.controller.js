@@ -1,6 +1,6 @@
 import { COMPANY } from '../config/company.js'
-import { vehicles } from '../data/inventory.js'
 import { buildDealerSystemPrompt } from '../prompts/dealerSystemPrompt.js'
+import { getPublishedChatInventorySnapshot } from '../services/chatInventory.service.js'
 import { askGemini, getGeminiCooldownRemainingMs, isGeminiAvailable } from '../services/gemini.service.js'
 import { askGroq } from '../services/groq.service.js'
 import { detectIntent } from '../services/intent.service.js'
@@ -34,10 +34,10 @@ function normalizeText(value = '') {
     .toLowerCase()
 }
 
-function getMentionedInventoryVehicleIds(reply) {
+function getMentionedInventoryVehicleIds(reply, inventory = []) {
   const normalizedReply = normalizeText(reply)
 
-  return vehicles
+  return inventory
     .filter((vehicle) => {
       const fullName = normalizeText(`${vehicle.brand} ${vehicle.model}`)
       const fullNameWithYear = normalizeText(`${vehicle.brand} ${vehicle.model} ${vehicle.year}`)
@@ -60,8 +60,8 @@ function countVehicleMentions(reply, referenceVehicles) {
   }, 0)
 }
 
-function mentionsOnlyAllowedVehicles(reply, referenceVehicles) {
-  const mentionedVehicleIds = getMentionedInventoryVehicleIds(reply)
+function mentionsOnlyAllowedVehicles(reply, referenceVehicles, inventory = []) {
+  const mentionedVehicleIds = getMentionedInventoryVehicleIds(reply, inventory)
 
   if (!mentionedVehicleIds.length) {
     return true
@@ -75,7 +75,7 @@ function mentionsOnlyAllowedVehicles(reply, referenceVehicles) {
   return mentionedVehicleIds.every((vehicleId) => allowedIds.has(vehicleId))
 }
 
-function isReplyUsable(reply, intent, referenceVehicles) {
+function isReplyUsable(reply, intent, referenceVehicles, inventory = []) {
   if (typeof reply !== 'string' || !reply.trim()) {
     return false
   }
@@ -83,7 +83,18 @@ function isReplyUsable(reply, intent, referenceVehicles) {
   const normalizedReply = reply.trim()
 
   if (referenceVehicles.length === 0) {
-    return normalizedReply.length >= 40
+    return ![
+      'cheapest_vehicle',
+      'most_expensive_vehicle',
+      'budget_search',
+      'suv_search',
+      'sedan_search',
+      'pickup_search',
+      'family_vehicle',
+      'inventory_search',
+      'compare_vehicles',
+      'vehicle_details',
+    ].includes(intent) && normalizedReply.length >= 40
   }
 
   const requiredMentions = intent === 'compare_vehicles'
@@ -91,7 +102,7 @@ function isReplyUsable(reply, intent, referenceVehicles) {
     : 1
 
   return normalizedReply.length >= 80
-    && mentionsOnlyAllowedVehicles(normalizedReply, referenceVehicles)
+    && mentionsOnlyAllowedVehicles(normalizedReply, referenceVehicles, inventory)
     && countVehicleMentions(normalizedReply, referenceVehicles) >= requiredMentions
 }
 
@@ -117,7 +128,8 @@ export async function handleChat(req, res) {
     return res.status(400).json({ error })
   }
 
-  const intent = detectIntent({ message, currentContext })
+  const inventory = await getPublishedChatInventorySnapshot()
+  const intent = detectIntent({ message, currentContext, inventory })
   const {
     signals,
     updatedContext: resolvedContext,
@@ -125,6 +137,7 @@ export async function handleChat(req, res) {
     message,
     intent,
     currentContext,
+    inventory,
   })
 
   const recommendation = getRecommendationResponse({
@@ -133,6 +146,7 @@ export async function handleChat(req, res) {
     currentContext,
     updatedContext: resolvedContext,
     signals,
+    inventory,
   })
 
   const updatedContext = attachRecommendationContext({
@@ -165,7 +179,7 @@ export async function handleChat(req, res) {
         'Gemini',
       )
 
-      if (isReplyUsable(geminiReply, intent, recommendation.referenceVehicles)) {
+      if (isReplyUsable(geminiReply, intent, recommendation.referenceVehicles, inventory)) {
         return res.json(buildResponsePayload({
           reply: geminiReply.trim(),
           provider: 'gemini',
@@ -194,7 +208,7 @@ export async function handleChat(req, res) {
       'Groq',
     )
 
-    if (isReplyUsable(groqReply, intent, recommendation.referenceVehicles)) {
+    if (isReplyUsable(groqReply, intent, recommendation.referenceVehicles, inventory)) {
       return res.json(buildResponsePayload({
         reply: groqReply.trim(),
         provider: 'groq',

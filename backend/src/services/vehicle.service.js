@@ -4,6 +4,7 @@ import { isValidObjectId } from '../utils/object-id.js'
 import { buildVehicleTitle, slugify } from '../utils/slug.js'
 import { conflict, notFound } from '../utils/api-error.js'
 import { shouldCountVehicleView } from '../utils/view-tracker.js'
+import { invalidatePublishedChatInventoryCache } from './chatInventory.service.js'
 import { normalizeImageOrdering, removeAllVehicleImages, syncVehicleMainImage } from './image.service.js'
 
 export async function listPublicVehicles(query) {
@@ -113,6 +114,7 @@ export async function createVehicle(payload, actor) {
     setAsMain: false,
   })
   await vehicle.save()
+  invalidatePublishedChatInventoryCache()
 
   return serializeAdminVehicle(vehicle)
 }
@@ -174,6 +176,7 @@ export async function updateVehicle(id, payload, actor) {
   applyStatusTimestamps(vehicle)
   vehicle.updatedBy = actor.id
   await vehicle.save()
+  invalidatePublishedChatInventoryCache()
 
   return serializeAdminVehicle(vehicle)
 }
@@ -184,6 +187,7 @@ export async function deleteVehicle(id) {
 
   await removeAllVehicleImages(vehicle)
   await vehicle.deleteOne()
+  invalidatePublishedChatInventoryCache()
 }
 
 export async function publishVehicle(id, actor) {
@@ -205,6 +209,7 @@ export async function updateVehicleFeatured(id, featured, actor) {
   vehicle.featured = featured
   vehicle.updatedBy = actor.id
   await vehicle.save()
+  invalidatePublishedChatInventoryCache()
 
   return serializeAdminVehicle(vehicle)
 }
@@ -217,6 +222,7 @@ async function updateVehicleStatus(id, status, actor) {
   vehicle.updatedBy = actor.id
   applyStatusTimestamps(vehicle)
   await vehicle.save()
+  invalidatePublishedChatInventoryCache()
 
   return serializeAdminVehicle(vehicle)
 }

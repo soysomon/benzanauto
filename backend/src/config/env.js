@@ -33,6 +33,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET debe tener al menos 32 caracteres.'),
   JWT_EXPIRES_IN: z.string().min(2).default('12h'),
   FRONTEND_URL: z.string().optional().default(''),
+  FRONTEND_ADMIN_URL: z.string().optional().default(''),
   FRONTEND_URLS: z.string().optional().default(''),
   TRUST_PROXY: parseBoolean(false).default(false),
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
@@ -42,6 +43,15 @@ const envSchema = z.object({
   PUBLIC_CATALOG_RATE_LIMIT_MAX: parseInteger(600).default(600),
   LOGIN_RATE_LIMIT_WINDOW_MS: parseInteger(900_000).default(900_000),
   LOGIN_RATE_LIMIT_MAX: parseInteger(8).default(8),
+  FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS: parseInteger(900_000).default(900_000),
+  FORGOT_PASSWORD_RATE_LIMIT_MAX: parseInteger(5).default(5),
+  RESET_PASSWORD_RATE_LIMIT_WINDOW_MS: parseInteger(900_000).default(900_000),
+  RESET_PASSWORD_RATE_LIMIT_MAX: parseInteger(10).default(10),
+  MAX_FAILED_LOGIN_ATTEMPTS: parseInteger(5).default(5),
+  ACCOUNT_LOCK_MINUTES: parseInteger(15).default(15),
+  PASSWORD_MIN_LENGTH: parseInteger(12).default(12),
+  PASSWORD_RESET_TOKEN_TTL_MINUTES: parseInteger(15).default(15),
+  PASSWORD_RESET_REQUEST_MIN_INTERVAL_MS: parseInteger(60_000).default(60_000),
   JSON_BODY_LIMIT: z.string().default('1mb'),
   URLENCODED_LIMIT: z.string().default('1mb'),
   UPLOAD_MAX_FILE_SIZE_MB: parseInteger(5).default(5),
@@ -62,9 +72,17 @@ const envSchema = z.object({
   SUPERADMIN_EMAIL: z.string().optional().default(''),
   SUPERADMIN_PASSWORD: z.string().optional().default(''),
   SEED_DEMO_VEHICLES: parseBoolean(false).default(false),
+  EMAIL_PROVIDER: z.enum(['disabled', 'smtp']).default('disabled'),
+  SMTP_HOST: z.string().optional().default(''),
+  SMTP_PORT: parseInteger(587).default(587),
+  SMTP_SECURE: parseBoolean(false).default(false),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
+  EMAIL_FROM: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
   GROQ_API_KEY: z.string().optional().default(''),
   AI_TIMEOUT_MS: parseInteger(12_000).default(12_000),
+  CHAT_INVENTORY_CACHE_MS: parseInteger(15_000).default(15_000),
 }).superRefine((config, ctx) => {
   if (config.STORAGE_DRIVER !== 's3') return
 
@@ -93,6 +111,23 @@ const envSchema = z.object({
       path: ['S3_PUBLIC_BASE_URL'],
       message: 'S3_PUBLIC_BASE_URL o UPLOADS_BASE_URL es obligatorio cuando STORAGE_DRIVER=s3 usa un endpoint custom.',
     })
+  }
+}).superRefine((config, ctx) => {
+  if (config.EMAIL_PROVIDER !== 'smtp') return
+
+  for (const [key, message] of [
+    ['SMTP_HOST', 'SMTP_HOST es obligatorio cuando EMAIL_PROVIDER=smtp.'],
+    ['SMTP_USER', 'SMTP_USER es obligatorio cuando EMAIL_PROVIDER=smtp.'],
+    ['SMTP_PASS', 'SMTP_PASS es obligatorio cuando EMAIL_PROVIDER=smtp.'],
+    ['EMAIL_FROM', 'EMAIL_FROM es obligatorio cuando EMAIL_PROVIDER=smtp.'],
+  ]) {
+    if (!hasValue(config[key])) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message,
+      })
+    }
   }
 })
 

@@ -45,3 +45,19 @@ export const loginRateLimiter = rateLimit({
   legacyHeaders: false,
   handler: buildHandler('Demasiados intentos de inicio de sesion. Intenta mas tarde.'),
 })
+
+export const forgotPasswordRateLimiter = rateLimit({
+  windowMs: env.FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS,
+  max: env.FORGOT_PASSWORD_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: buildHandler('Demasiadas solicitudes de recuperación. Intenta más tarde.'),
+})
+
+export const resetPasswordRateLimiter = rateLimit({
+  windowMs: env.RESET_PASSWORD_RATE_LIMIT_WINDOW_MS,
+  max: env.RESET_PASSWORD_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: buildHandler('Demasiados intentos de restablecimiento. Intenta más tarde.'),
+})

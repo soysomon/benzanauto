@@ -16,7 +16,9 @@ async function run() {
   process.env.JWT_SECRET = smokeSecret
   process.env.JWT_EXPIRES_IN = '12h'
   process.env.FRONTEND_URL = 'http://localhost:5173'
+  process.env.FRONTEND_ADMIN_URL = 'http://localhost:5173/admin'
   process.env.STORAGE_DRIVER = 'local'
+  process.env.EMAIL_PROVIDER = 'disabled'
   process.env.SUPERADMIN_NAME = 'Smoke Admin'
   process.env.SUPERADMIN_USERNAME = `smokeadmin_${smokeUserSuffix}`
   process.env.SUPERADMIN_EMAIL = `smoke_${smokeUserSuffix}@example.com`
@@ -27,11 +29,13 @@ async function run() {
     { createApp },
     { createInitialSuperAdmin },
     { Vehicle },
+    { clearSentEmailsForTesting, getSentEmailsForTesting },
   ] = await Promise.all([
     import('../config/database.js'),
     import('../app.js'),
     import('../services/auth.service.js'),
     import('../models/Vehicle.js'),
+    import('../services/email.service.js'),
   ])
 
   try {
@@ -56,6 +60,88 @@ async function run() {
     assert.ok(loginResponse.body.token)
 
     const token = loginResponse.body.token
+
+    clearSentEmailsForTesting()
+
+    const managedUserResponse = await request(app)
+      .post('/api/admin/users')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Smoke Editor',
+        username: `editor_${smokeUserSuffix}`,
+        email: `editor_${smokeUserSuffix}@example.com`,
+        password: `Editor-${crypto.randomBytes(8).toString('hex')}-A1!`,
+        role: 'editor',
+        isActive: true,
+        mustChangePassword: true,
+      })
+
+    assert.equal(managedUserResponse.status, 201)
+    const managedUserId = managedUserResponse.body.user.id
+    clearSentEmailsForTesting()
+
+    const forgotPasswordResponse = await request(app)
+      .post('/api/admin/auth/forgot-password')
+      .send({
+        identifier: `editor_${smokeUserSuffix}`,
+      })
+
+    assert.equal(forgotPasswordResponse.status, 200)
+    const sentEmails = getSentEmailsForTesting()
+    assert.equal(sentEmails.length, 1)
+
+    const resetUrl = sentEmails[0].text.match(/https?:\/\/\S+/)?.[0]
+    assert.ok(resetUrl)
+    const resetToken = new URL(resetUrl).searchParams.get('token')
+    assert.ok(resetToken)
+
+    const validateResetResponse = await request(app)
+      .post('/api/admin/auth/reset-password/validate')
+      .send({ token: resetToken })
+
+    assert.equal(validateResetResponse.status, 200)
+    assert.equal(validateResetResponse.body.valid, true)
+
+    const updatedManagedPassword = `EditorReset-${crypto.randomBytes(8).toString('hex')}-A1!`
+    const resetPasswordResponse = await request(app)
+      .post('/api/admin/auth/reset-password')
+      .send({
+        token: resetToken,
+        newPassword: updatedManagedPassword,
+        confirmPassword: updatedManagedPassword,
+      })
+
+    assert.equal(resetPasswordResponse.status, 200)
+
+    const managedLoginResponse = await request(app)
+      .post('/api/admin/auth/login')
+      .send({
+        identifier: `editor_${smokeUserSuffix}`,
+        password: updatedManagedPassword,
+      })
+
+    assert.equal(managedLoginResponse.status, 200)
+    assert.equal(managedLoginResponse.body.user.role, 'editor')
+
+    const auditLogResponse = await request(app)
+      .get('/api/admin/audit')
+      .set('Authorization', `Bearer ${token}`)
+
+    assert.equal(auditLogResponse.status, 200)
+    assert.ok(auditLogResponse.body.data.some((entry) => entry.action === 'user_created'))
+    assert.ok(auditLogResponse.body.data.some((entry) => entry.action === 'password_reset_completed'))
+
+    const blockUserResponse = await request(app)
+      .patch(`/api/admin/users/${managedUserId}/block`)
+      .set('Authorization', `Bearer ${token}`)
+
+    assert.equal(blockUserResponse.status, 200)
+
+    const unblockUserResponse = await request(app)
+      .patch(`/api/admin/users/${managedUserId}/unblock`)
+      .set('Authorization', `Bearer ${token}`)
+
+    assert.equal(unblockUserResponse.status, 200)
 
     const createVehicleResponse = await request(app)
       .post('/api/admin/vehicles')
@@ -170,6 +256,21 @@ async function run() {
     assert.equal(detailResponse.body.vehicle.condition, 'Nuevo')
     assert.equal(detailResponse.body.vehicle.mainImage, secondImage.url)
     assert.equal(detailResponse.body.vehicle.images[0].id, secondImage.id)
+
+    const chatResponse = await request(app)
+      .post('/api/chat')
+      .send({
+        message: '¿Qué Toyota tienen disponibles ahora mismo?',
+        history: [],
+        currentContext: {},
+      })
+
+    assert.equal(chatResponse.status, 200)
+    assert.equal(chatResponse.body.recommendedVehicles.length, 1)
+    assert.equal(chatResponse.body.recommendedVehicles[0].id, vehicleId)
+    assert.equal(chatResponse.body.recommendedVehicles[0].slug, slug)
+    assert.equal(chatResponse.body.recommendedVehicles[0].brand, 'Toyota')
+    assert.equal(chatResponse.body.recommendedVehicles[0].model, 'Prado VX')
 
     const contactResponse = await request(app).post(`/api/vehicles/${slug}/contact`)
     assert.equal(contactResponse.status, 200)

@@ -11,6 +11,7 @@ import publicVehicleRoutes from './routes/public/vehicle.routes.js'
 import vehicleDataRoutes from './routes/public/vehicleData.routes.js'
 import adminAuthRoutes from './routes/admin/auth.routes.js'
 import adminUserRoutes from './routes/admin/user.routes.js'
+import adminAuditRoutes from './routes/admin/audit.routes.js'
 import adminVehicleRoutes from './routes/admin/vehicle.routes.js'
 import adminDashboardRoutes from './routes/admin/dashboard.routes.js'
 import { getDatabaseHealth } from './config/database.js'
@@ -90,6 +91,7 @@ export function createApp() {
   app.use('/api/vehicle-data', publicCatalogRateLimiter, vehicleDataRoutes)
   app.use('/api/admin/auth', adminAuthRoutes)
   app.use('/api/admin/users', adminUserRoutes)
+  app.use('/api/admin/audit', adminAuditRoutes)
   app.use('/api/admin/vehicles', adminVehicleRoutes)
   app.use('/api/admin/dashboard', adminDashboardRoutes)
 

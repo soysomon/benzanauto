@@ -19,7 +19,7 @@ export async function authenticateAdmin(req, _res, next) {
       AdminSession.findById(payload.sessionId),
     ])
 
-    if (!user || !user.isActive) {
+    if (!user || user.deletedAt || !user.isActive || user.isBlocked) {
       return next(unauthorized('Tu usuario no esta activo o ya no existe.'))
     }
 
@@ -57,4 +57,3 @@ function extractBearerToken(req) {
   if (scheme?.toLowerCase() !== 'bearer' || !token) return null
   return token.trim()
 }
-

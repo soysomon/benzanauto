@@ -198,9 +198,9 @@ function looksLikeVehicleQuestion(text, signals) {
   )
 }
 
-export function detectIntent({ message, currentContext = {} }) {
+export function detectIntent({ message, currentContext = {}, inventory = [] }) {
   const text = normalizeText(String(message ?? '').trim())
-  const signals = extractMessageSignals(message)
+  const signals = extractMessageSignals(message, inventory)
   const context = normalizeChatContext(currentContext)
 
   if (!text) return 'general_dealer_question'
