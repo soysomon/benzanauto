@@ -158,13 +158,16 @@ async function run() {
     const publicListResponse = await request(app).get('/api/vehicles')
     assert.equal(publicListResponse.status, 200)
     assert.equal(publicListResponse.body.data.length, 1)
+    assert.equal(publicListResponse.body.data[0].status, 'published')
+    assert.equal(publicListResponse.body.data[0].condition, 'Nuevo')
 
     const slug = publicListResponse.body.data[0].slug
 
     const detailResponse = await request(app).get(`/api/vehicles/${slug}`)
     assert.equal(detailResponse.status, 200)
     assert.equal(detailResponse.body.vehicle.slug, slug)
-    assert.equal(detailResponse.body.vehicle.status, 'Nuevo')
+    assert.equal(detailResponse.body.vehicle.status, 'published')
+    assert.equal(detailResponse.body.vehicle.condition, 'Nuevo')
     assert.equal(detailResponse.body.vehicle.mainImage, secondImage.url)
     assert.equal(detailResponse.body.vehicle.images[0].id, secondImage.id)
 

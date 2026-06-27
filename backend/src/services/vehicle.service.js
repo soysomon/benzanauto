@@ -440,7 +440,7 @@ function serializePublicVehicle(vehicle) {
     traction: vehicle.drivetrain,
     color: vehicle.color,
     condition: vehicle.condition,
-    status: vehicle.condition,
+    status: vehicle.status,
     location: vehicle.location,
     description: vehicle.description,
     features: vehicle.features ?? [],

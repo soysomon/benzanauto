@@ -26,6 +26,7 @@ import {
   setStoredAdminUser,
 } from '../lib/adminSession'
 import { ApiError, UNAUTHORIZED_EVENT_NAME } from '../lib/apiClient'
+import { getVehicleDetail as getPublicVehicleDetail } from '../lib/publicApi'
 import {
   fetchVehicleEnrichment,
   fetchVehicleMakes,
@@ -1437,6 +1438,16 @@ export default function AdminDashboardPage() {
   const previewSpecs = useMemo(() => buildSpecsObject(form.specRows), [form.specRows])
   const publishReady = missingChecklistItems.length === 0
   const recentVehicles = stats?.recentVehicles ?? []
+  const persistedVehicleStatus = selectedVehicle?.status ?? form.status ?? 'draft'
+  const vehicleIsPublished = persistedVehicleStatus === 'published'
+  const vehicleIsSold = persistedVehicleStatus === 'sold'
+  const publishStatusLabel = vehicleIsPublished
+    ? 'Publicado'
+    : vehicleIsSold
+      ? 'Vendido'
+      : currentStep.id === 'publish' && publishReady
+        ? 'Listo para publicar'
+        : getStatusLabel(persistedVehicleStatus)
 
   const summaryLine = useMemo(() => {
     if (statsLoading) return 'Cargando...'
@@ -1480,12 +1491,50 @@ export default function AdminDashboardPage() {
     })
   }
 
-  const syncAfterMutation = async ({ vehicle = null, syncForm = false, successMessage = '' } = {}) => {
-    if (vehicle) {
-      applyVehicleSnapshot(vehicle, { syncForm })
+  const verifyPublicVehicleVisibility = async (vehicle) => {
+    const identifier = vehicle?.slug ?? vehicle?.id ?? null
+    if (!identifier) {
+      throw new ApiError('El vehículo se guardó, pero todavía no tiene una ruta pública válida.', {
+        status: 500,
+        code: 'PUBLIC_VEHICLE_MISSING_IDENTIFIER',
+      })
+    }
+
+    const publicVehicle = await getPublicVehicleDetail(identifier)
+    if (!publicVehicle) {
+      throw new ApiError('El vehículo se publicó, pero la API pública todavía no lo devuelve.', {
+        status: 502,
+        code: 'PUBLIC_VEHICLE_NOT_VISIBLE',
+      })
+    }
+
+    if (publicVehicle.status !== 'published') {
+      throw new ApiError('El vehículo se guardó, pero la web pública todavía no lo refleja como publicado.', {
+        status: 502,
+        code: 'PUBLIC_VEHICLE_STATUS_MISMATCH',
+      })
+    }
+
+    return publicVehicle
+  }
+
+  const syncAfterMutation = async ({
+    vehicle = null,
+    syncForm = false,
+    successMessage = '',
+    verifyPublicVisibility = false,
+  } = {}) => {
+    const normalizedVehicle = vehicle ? normalizeVehicleSnapshot(vehicle) : null
+
+    if (normalizedVehicle) {
+      applyVehicleSnapshot(normalizedVehicle, { syncForm })
     }
 
     await refreshAll({ throwOnError: true })
+
+    if (verifyPublicVisibility) {
+      await verifyPublicVehicleVisibility(normalizedVehicle ?? selectedVehicle)
+    }
 
     if (successMessage) {
       setFeedback(successMessage)
@@ -1594,6 +1643,7 @@ export default function AdminDashboardPage() {
         vehicle: response.vehicle,
         syncForm: true,
         successMessage: !silent ? successMessage : '',
+        verifyPublicVisibility: statusOverride === 'published',
       })
       return response.vehicle
     } catch (saveError) {
@@ -1658,6 +1708,17 @@ export default function AdminDashboardPage() {
     })
   }
 
+  const handleMarkAsSold = async () => {
+    const stepToValidate = ['preview', 'publish'].includes(currentStep.id) ? 'features' : currentStep.id
+    const isValid = validateCurrentStep(stepToValidate)
+    if (!isValid) return
+
+    await persistVehicle({
+      statusOverride: 'sold',
+      successMessage: 'Vehículo marcado como vendido.',
+    })
+  }
+
   const handlePublishNow = async () => {
     const requiredSteps = ['details', 'features']
     for (const stepId of requiredSteps) {
@@ -1699,6 +1760,9 @@ export default function AdminDashboardPage() {
       }
       if (response?.vehicle) {
         applyVehicleSnapshot(response.vehicle)
+      }
+      if (response?.vehicle?.status === 'published') {
+        await verifyPublicVehicleVisibility(response.vehicle)
       }
       if (successMessage) setFeedback(successMessage)
     } catch (actionFailure) {
@@ -3155,31 +3219,61 @@ export default function AdminDashboardPage() {
                 {/* ── Step: publish ── */}
                 {currentStep.id === 'publish' && (
                   <div className="space-y-8">
-                    <FieldShell
-                      label="Decisión final"
-                      hint="Aquí decides si el anuncio se queda interno como borrador o si ya sale en vivo."
-                    >
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {FINAL_ACTION_OPTIONS.map((option) => (
-                          <div
-                            key={option.value}
-                            className={[
-                              'rounded-2xl border p-5 text-left',
-                              option.value === 'published'
-                                ? 'border-[#0A0A0A] bg-[#0A0A0A]'
-                                : 'border-[#E8E8E8] bg-white',
-                            ].join(' ')}
-                          >
-                            <p className={`font-body text-sm font-medium ${option.value === 'published' ? 'text-white' : 'text-[#0A0A0A]'}`}>
-                              {option.label}
-                            </p>
-                            <p className={`font-body text-sm mt-1.5 leading-relaxed ${option.value === 'published' ? 'text-white/60' : 'text-[#AAA]'}`}>
-                              {option.description}
-                            </p>
-                          </div>
-                        ))}
+                    {persistedVehicleStatus === 'draft' && (
+                      <FieldShell
+                        label="Decisión final"
+                        hint="Aquí decides si el anuncio se queda interno como borrador o si ya sale en vivo."
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {FINAL_ACTION_OPTIONS.map((option) => (
+                            <div
+                              key={option.value}
+                              className={[
+                                'rounded-2xl border p-5 text-left',
+                                option.value === 'published'
+                                  ? 'border-[#0A0A0A] bg-[#0A0A0A]'
+                                  : 'border-[#E8E8E8] bg-white',
+                              ].join(' ')}
+                            >
+                              <p className={`font-body text-sm font-medium ${option.value === 'published' ? 'text-white' : 'text-[#0A0A0A]'}`}>
+                                {option.label}
+                              </p>
+                              <p className={`font-body text-sm mt-1.5 leading-relaxed ${option.value === 'published' ? 'text-white/60' : 'text-[#AAA]'}`}>
+                                {option.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </FieldShell>
+                    )}
+
+                    {vehicleIsPublished && (
+                      <div className="rounded-3xl border border-emerald-100 bg-emerald-50 px-6 py-5">
+                        <p className="font-body text-[11px] uppercase tracking-[0.24em] text-emerald-700 mb-3">
+                          Estado actual
+                        </p>
+                        <h3 className="font-heading text-2xl tracking-tight text-emerald-900">
+                          Vehículo publicado
+                        </h3>
+                        <p className="font-body text-sm text-emerald-800/80 mt-2 leading-relaxed max-w-2xl">
+                          Ya está visible en el inventario público y en su URL por slug. Si quieres llevarlo a portada, actívalo como destacado.
+                        </p>
                       </div>
-                    </FieldShell>
+                    )}
+
+                    {vehicleIsSold && (
+                      <div className="rounded-3xl border border-blue-100 bg-blue-50 px-6 py-5">
+                        <p className="font-body text-[11px] uppercase tracking-[0.24em] text-blue-700 mb-3">
+                          Estado actual
+                        </p>
+                        <h3 className="font-heading text-2xl tracking-tight text-blue-900">
+                          Vehículo vendido
+                        </h3>
+                        <p className="font-body text-sm text-blue-800/80 mt-2 leading-relaxed max-w-2xl">
+                          El vehículo quedó marcado como vendido y ya no debe tratarse como un borrador pendiente de publicación.
+                        </p>
+                      </div>
+                    )}
 
                     {!publishReady && (
                       <div className="rounded-2xl bg-[#FFF8EA] border border-[#F8E5B7] px-5 py-4">
@@ -3296,22 +3390,90 @@ export default function AdminDashboardPage() {
 
                     {wizardStepIndex === WIZARD_STEPS.length - 1 && (
                       <>
-                        <button
-                          type="button"
-                          onClick={handleSaveDraft}
-                          disabled={!canManageVehicles || saving}
-                          className="rounded-full border border-[#E8E8E8] px-5 py-3 font-body text-sm text-[#666] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
-                        >
-                          {saving ? 'Guardando...' : 'Guardar borrador'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handlePublishNow}
-                          disabled={!canManageVehicles || saving || !publishReady}
-                          className="rounded-full bg-[#0A0A0A] px-6 py-3 font-body text-sm text-white transition-colors hover:bg-[#222] disabled:opacity-40"
-                        >
-                          {saving ? 'Publicando...' : 'Publicar vehículo'}
-                        </button>
+                        {persistedVehicleStatus === 'draft' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSaveDraft}
+                              disabled={!canManageVehicles || saving}
+                              className="rounded-full border border-[#E8E8E8] px-5 py-3 font-body text-sm text-[#666] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                            >
+                              {saving ? 'Guardando...' : 'Guardar borrador'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePublishNow}
+                              disabled={!canManageVehicles || saving || !publishReady}
+                              className="rounded-full bg-[#0A0A0A] px-6 py-3 font-body text-sm text-white transition-colors hover:bg-[#222] disabled:opacity-40"
+                            >
+                              {saving ? 'Publicando...' : 'Publicar vehículo'}
+                            </button>
+                          </>
+                        )}
+
+                        {vehicleIsPublished && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSaveDraft}
+                              disabled={!canManageVehicles || saving}
+                              className="rounded-full border border-[#E8E8E8] px-5 py-3 font-body text-sm text-[#666] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                            >
+                              {saving ? 'Guardando...' : 'Mover a borrador'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleMarkAsSold}
+                              disabled={!canManageVehicles || saving}
+                              className="rounded-full border border-[#E8E8E8] px-5 py-3 font-body text-sm text-[#666] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                            >
+                              {saving ? 'Guardando...' : 'Marcar como vendido'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActionError('')
+                                setFeedback('')
+                                void persistVehicle({
+                                  statusOverride: 'published',
+                                  successMessage: 'Cambios publicados correctamente.',
+                                })
+                              }}
+                              disabled={!canManageVehicles || saving}
+                              className="rounded-full bg-[#0A0A0A] px-6 py-3 font-body text-sm text-white transition-colors hover:bg-[#222] disabled:opacity-40"
+                            >
+                              {saving ? 'Guardando...' : 'Guardar cambios'}
+                            </button>
+                          </>
+                        )}
+
+                        {vehicleIsSold && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSaveDraft}
+                              disabled={!canManageVehicles || saving}
+                              className="rounded-full border border-[#E8E8E8] px-5 py-3 font-body text-sm text-[#666] transition-colors hover:border-[#C0C0C0] hover:text-[#0A0A0A] disabled:opacity-40"
+                            >
+                              {saving ? 'Guardando...' : 'Mover a borrador'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActionError('')
+                                setFeedback('')
+                                void persistVehicle({
+                                  statusOverride: 'sold',
+                                  successMessage: 'Cambios guardados en el vehículo vendido.',
+                                })
+                              }}
+                              disabled={!canManageVehicles || saving}
+                              className="rounded-full bg-[#0A0A0A] px-6 py-3 font-body text-sm text-white transition-colors hover:bg-[#222] disabled:opacity-40"
+                            >
+                              {saving ? 'Guardando...' : 'Guardar cambios'}
+                            </button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -3342,12 +3504,7 @@ export default function AdminDashboardPage() {
                     <div className="space-y-2.5">
                         {[
                           { label: 'Precio', value: form.price ? formatCurrency(form.price, form.currency) : 'Pendiente' },
-                          {
-                            label: 'Estado',
-                            value: currentStep.id === 'publish' && publishReady
-                              ? 'Listo para publicar'
-                              : getStatusLabel(form.status),
-                          },
+                          { label: 'Estado', value: publishStatusLabel },
                           { label: 'Imágenes', value: `${selectedVehicle?.images?.length ?? 0} fotos` },
                           { label: 'Progreso', value: `${progressPercent}%` },
                         ].map((item) => (

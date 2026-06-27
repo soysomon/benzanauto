@@ -19,6 +19,7 @@ export default function VehicleCard({ vehicle, index = 0 }) {
   const vehicleLabel = `${vehicle.brand} ${vehicle.model} ${vehicle.year}`
   const vehicleIdentifier = vehicle.slug ?? vehicle.legacyId ?? vehicle.id
   const contactIdentifier = vehicle.slug ?? vehicle.backendId ?? vehicle.legacyId ?? vehicle.id
+  const conditionLabel = vehicle.condition ?? vehicle.status ?? 'Disponible'
 
   const goToDetails = () => {
     navigate(`/vehiculo/${vehicleIdentifier}`)
@@ -61,8 +62,8 @@ export default function VehicleCard({ vehicle, index = 0 }) {
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          <Badge variant={vehicle.status === 'Nuevo' ? 'red' : 'outline'}>
-            {vehicle.status}
+          <Badge variant={conditionLabel === 'Nuevo' ? 'red' : 'outline'}>
+            {conditionLabel}
           </Badge>
           {vehicle.badge && (
             <Badge variant="default">{vehicle.badge}</Badge>

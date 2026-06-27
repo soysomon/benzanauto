@@ -36,6 +36,7 @@ function formatPrice(price) {
 
 function VehicleResultCard({ vehicle, onClick }) {
   const vehicleIdentifier = vehicle.slug ?? vehicle.legacyId ?? vehicle.id
+  const conditionLabel = vehicle.condition ?? vehicle.status ?? 'Disponible'
 
   return (
     <Link
@@ -52,7 +53,7 @@ function VehicleResultCard({ vehicle, onClick }) {
       />
       <div className="min-w-0 flex-1">
         <p className="font-body text-[10px] text-neutral-400 uppercase tracking-widest mb-1">
-          {vehicle.brand} · {vehicle.year} · {vehicle.status}
+          {vehicle.brand} · {vehicle.year} · {conditionLabel}
         </p>
         <p className="font-body text-sm font-semibold text-neutral-900 leading-tight">
           {vehicle.model}

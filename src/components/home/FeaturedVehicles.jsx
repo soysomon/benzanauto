@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { getFeaturedVehicles } from '../../lib/publicApi'
+import { getFeaturedVehicles, listPublicVehicles } from '../../lib/publicApi'
 import StatePanel from '../ui/StatePanel'
 
 function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
@@ -66,6 +66,7 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
 
 export default function FeaturedVehicles() {
   const [showcase, setShowcase] = useState([])
+  const [showcaseMode, setShowcaseMode] = useState('featured')
   const [activeTab, setActiveTab] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -77,9 +78,20 @@ export default function FeaturedVehicles() {
       try {
         setLoading(true)
         setError('')
-        const data = await getFeaturedVehicles()
+
+        const featuredVehicles = await getFeaturedVehicles()
         if (!ignore) {
-          setShowcase(data.slice(0, 4))
+          if (featuredVehicles.length > 0) {
+            setShowcase(featuredVehicles.slice(0, 4))
+            setShowcaseMode('featured')
+            return
+          }
+
+          const recentVehicles = await listPublicVehicles({ limit: 4 })
+          if (ignore) return
+
+          setShowcase(recentVehicles.data.slice(0, 4))
+          setShowcaseMode('recent')
         }
       } catch (loadError) {
         if (!ignore) {
@@ -122,7 +134,7 @@ export default function FeaturedVehicles() {
           <div className="flex items-center gap-3">
             <span className="block w-8 h-px bg-b-red" />
             <span className="font-body text-xs font-semibold uppercase tracking-[0.22em] text-b-red">
-              Vehiculos Destacados
+              {showcaseMode === 'featured' ? 'Vehiculos Destacados' : 'Vehiculos Recientes'}
             </span>
           </div>
         </div>
@@ -163,7 +175,7 @@ export default function FeaturedVehicles() {
         <div className="flex items-center gap-3">
           <span className="block w-8 h-px bg-b-red" />
           <span className="font-body text-xs font-semibold uppercase tracking-[0.22em] text-b-red">
-            Vehiculos Destacados
+            {showcaseMode === 'featured' ? 'Vehiculos Destacados' : 'Vehiculos Recientes'}
           </span>
         </div>
         <Link
