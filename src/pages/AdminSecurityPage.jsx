@@ -40,7 +40,10 @@ export default function AdminSecurityPage() {
         confirmPassword: form.confirmPassword,
       })
 
-      sessionState.syncSession(response.token, response.user, response.session ?? null)
+      sessionState.syncSession(response.token, response.user, response.session ?? null, {
+        csrfToken: response.csrfToken ?? '',
+        cookieBacked: true,
+      })
       setForm({
         currentPassword: '',
         newPassword: '',

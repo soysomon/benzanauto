@@ -465,3 +465,49 @@ La Fase 0 queda lista cuando:
 - existe backlog por fases
 - `main` permanece intacta
 - produccion no ha sido modificada directamente
+
+## Fase 1 - Avance ejecutado
+Fecha de ejecucion: `2026-06-28`
+
+### Cambios implementados
+- actualizacion de `react-router-dom` y `react-router` a `6.30.4`
+- soporte de sesion admin por cookie segura `httpOnly`
+- soporte de proteccion CSRF para mutaciones admin basadas en cookie
+- CORS ajustado para `credentials: true` y header CSRF permitido
+- frontend migrado a una estrategia de sesion `cookie-backed`
+- JWT ya no queda persistido como secreto reutilizable en `localStorage`
+- smoke test ampliado para validar:
+  - cookie de sesion en login
+  - `GET /api/admin/auth/me` autenticado por cookie
+  - mutaciones admin con header CSRF
+  - limpieza de cookie en logout
+
+### Estrategia aplicada
+Se dejo una compatibilidad controlada:
+- el backend sigue aceptando `Bearer token`
+- el frontend admin ahora prioriza cookie segura
+- esto evita romper el panel actual mientras reduce la dependencia de token persistido en navegador
+
+### Variables nuevas implementadas en backend
+- `ADMIN_AUTH_COOKIE_NAME`
+- `ADMIN_AUTH_COOKIE_DOMAIN`
+- `ADMIN_AUTH_COOKIE_PATH`
+- `ADMIN_AUTH_COOKIE_SAME_SITE`
+- `ADMIN_AUTH_COOKIE_SECURE`
+- `ADMIN_CSRF_HEADER_NAME`
+
+### Resultado despues de Fase 1
+- `npm run build`: PASS
+- `npm --prefix backend run smoke`: PASS
+- `npm audit --omit=dev`: PASS
+- `npm --prefix backend audit --omit=dev`: PASS
+
+### Pendientes que siguen abiertos
+- Fase 2: CI/CD y QA minimo
+- Fase 3: SEO tecnico
+- Fase 4: performance y code splitting
+- Fase 5: indices compuestos para escalabilidad de catalogo
+- Fase 6: correo productivo real
+- Fase 7: logger estructurado y observabilidad
+- Fase 8: accesibilidad y UX
+- Fase 9: dominio final del cliente

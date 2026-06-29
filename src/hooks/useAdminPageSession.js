@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAdminMe, logoutAdmin } from '../lib/adminApi'
 import {
+  COOKIE_SESSION_TOKEN,
   clearStoredAdminToken,
   getStoredAdminToken,
   getStoredAdminUser,
   setStoredAdminSession,
-  setStoredAdminUser,
 } from '../lib/adminSession'
 import { UNAUTHORIZED_EVENT_NAME } from '../lib/apiClient'
 
@@ -19,7 +19,7 @@ export function useAdminPageSession({ redirectOnMissingToken = true } = {}) {
   const navigate = useNavigate()
   const [token, setToken] = useState(() => getStoredAdminToken())
   const [session, setSession] = useState(() => getInitialSession())
-  const [loading, setLoading] = useState(() => Boolean(getStoredAdminToken()))
+  const [loading, setLoading] = useState(() => redirectOnMissingToken || Boolean(getStoredAdminUser()))
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,8 +30,6 @@ export function useAdminPageSession({ redirectOnMissingToken = true } = {}) {
   }, [])
 
   const refreshSession = useCallback(async (activeToken = token) => {
-    if (!activeToken) return null
-
     setLoading(true)
     setRefreshing(true)
     setError('')
@@ -39,7 +37,11 @@ export function useAdminPageSession({ redirectOnMissingToken = true } = {}) {
     try {
       const response = await getAdminMe(activeToken)
       setSession(response)
-      setStoredAdminUser(response.user)
+      setStoredAdminSession(activeToken || COOKIE_SESSION_TOKEN, response.user, {
+        csrfToken: response.csrfToken ?? '',
+        cookieBacked: true,
+      })
+      setToken(activeToken || COOKIE_SESSION_TOKEN)
       return response
     } catch (loadError) {
       clearSession()
@@ -58,11 +60,8 @@ export function useAdminPageSession({ redirectOnMissingToken = true } = {}) {
   }, [clearSession, navigate, redirectOnMissingToken, token])
 
   useEffect(() => {
-    if (!token) {
+    if (!redirectOnMissingToken && !token && !session?.user) {
       setLoading(false)
-      if (redirectOnMissingToken) {
-        navigate('/admin-login', { replace: true })
-      }
       return
     }
 
@@ -94,9 +93,12 @@ export function useAdminPageSession({ redirectOnMissingToken = true } = {}) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT_NAME, handleUnauthorized)
   }, [clearSession, navigate, redirectOnMissingToken])
 
-  const syncSession = useCallback((nextToken, user, sessionMeta = null) => {
-    setStoredAdminSession(nextToken, user)
-    setToken(nextToken)
+  const syncSession = useCallback((nextToken, user, sessionMeta = null, sessionOptions = {}) => {
+    setStoredAdminSession(nextToken, user, {
+      csrfToken: sessionOptions.csrfToken ?? '',
+      cookieBacked: sessionOptions.cookieBacked ?? true,
+    })
+    setToken(COOKIE_SESSION_TOKEN)
     setSession({ user, session: sessionMeta })
   }, [])
 

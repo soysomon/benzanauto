@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as vehicleController from '../../controllers/admin/vehicle.controller.js'
-import { authenticateAdmin } from '../../middlewares/auth.middleware.js'
+import { authenticateAdmin, requireAdminCsrf } from '../../middlewares/auth.middleware.js'
 import { requirePermission } from '../../middlewares/authorize.middleware.js'
 import { vehicleImagesUpload } from '../../middlewares/upload.middleware.js'
 import { validateRequest } from '../../middlewares/validate.middleware.js'
@@ -17,6 +17,7 @@ import {
 const router = Router()
 
 router.use(authenticateAdmin)
+router.use(requireAdminCsrf)
 
 router.get('/', requirePermission('readAdmin'), validateRequest({ query: adminVehicleListQuerySchema }), vehicleController.index)
 router.post('/', requirePermission('manageVehicles'), validateRequest({ body: createVehicleBodySchema }), vehicleController.store)
@@ -31,4 +32,3 @@ router.post('/:id/images', requirePermission('manageVehicles'), validateRequest(
 router.delete('/:id/images/:imageId', requirePermission('manageVehicles'), validateRequest({ params: vehicleImageParamsSchema }), vehicleController.destroyImage)
 
 export default router
-

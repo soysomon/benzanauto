@@ -34,6 +34,11 @@ const adminSessionSchema = new mongoose.Schema({
     default: null,
     maxlength: 300,
   },
+  csrfToken: {
+    type: String,
+    default: null,
+    maxlength: 128,
+  },
   lastSeenAt: {
     type: Date,
     default: null,

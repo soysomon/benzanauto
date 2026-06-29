@@ -2,11 +2,18 @@ import jwt from 'jsonwebtoken'
 import { env } from '../config/env.js'
 import { AdminSession } from '../models/AdminSession.js'
 import { User } from '../models/User.js'
-import { unauthorized } from '../utils/api-error.js'
+import { forbidden, unauthorized } from '../utils/api-error.js'
+import {
+  createAdminCsrfToken,
+  extractAdminSessionTokenFromRequest,
+  getAdminCsrfHeaderValue,
+  isSafeHttpMethod,
+  safeCompareTokens,
+} from '../utils/admin-auth-cookie.js'
 
 export async function authenticateAdmin(req, _res, next) {
   try {
-    const token = extractBearerToken(req)
+    const { token, transport } = extractAdminToken(req)
     if (!token) return next(unauthorized('Debes iniciar sesion para acceder.'))
 
     const payload = jwt.verify(token, env.JWT_SECRET)
@@ -35,8 +42,14 @@ export async function authenticateAdmin(req, _res, next) {
       return next(unauthorized('El token ya no es valido para este usuario.'))
     }
 
+    if (!session.csrfToken) {
+      session.csrfToken = createAdminCsrfToken()
+    }
+
     req.auth = {
       token,
+      transport,
+      viaCookie: transport === 'cookie',
       payload,
       user,
       session,
@@ -51,9 +64,49 @@ export async function authenticateAdmin(req, _res, next) {
   }
 }
 
+export function requireAdminCsrf(req, _res, next) {
+  if (isSafeHttpMethod(req.method)) {
+    return next()
+  }
+
+  if (req.auth?.transport !== 'cookie') {
+    return next()
+  }
+
+  const csrfHeaderValue = getAdminCsrfHeaderValue(req)
+  if (!safeCompareTokens(csrfHeaderValue, req.auth?.session?.csrfToken)) {
+    return next(forbidden('No se pudo validar la solicitud segura. Recarga e intenta nuevamente.'))
+  }
+
+  return next()
+}
+
 function extractBearerToken(req) {
   const header = req.get('authorization') ?? ''
   const [scheme, token] = header.split(' ')
   if (scheme?.toLowerCase() !== 'bearer' || !token) return null
   return token.trim()
+}
+
+function extractAdminToken(req) {
+  const bearerToken = extractBearerToken(req)
+  if (bearerToken) {
+    return {
+      token: bearerToken,
+      transport: 'bearer',
+    }
+  }
+
+  const cookieToken = extractAdminSessionTokenFromRequest(req)
+  if (cookieToken) {
+    return {
+      token: cookieToken,
+      transport: 'cookie',
+    }
+  }
+
+  return {
+    token: null,
+    transport: null,
+  }
 }

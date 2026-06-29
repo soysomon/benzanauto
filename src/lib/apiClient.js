@@ -1,5 +1,11 @@
+import {
+  getStoredAdminCsrfToken,
+  isCookieBackedAdminSessionToken,
+} from './adminSession'
+
 const REQUEST_TIMEOUT_MS = 15_000
 const UNAUTHORIZED_EVENT_NAME = 'benzan:admin-unauthorized'
+const ADMIN_CSRF_HEADER_NAME = 'X-CSRF-Token'
 
 function normalizeBaseUrl(baseUrl) {
   if (typeof baseUrl !== 'string') return ''
@@ -53,6 +59,22 @@ function appendSearchParams(urlSearchParams, searchParams) {
 
     urlSearchParams.set(key, String(rawValue))
   }
+}
+
+function isAdminApiPath(path) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return normalizedPath.startsWith('/admin/')
+}
+
+function shouldIncludeCredentials(path) {
+  return isAdminApiPath(path)
+}
+
+function shouldAttachCsrfToken(path, method) {
+  if (!isAdminApiPath(path)) return false
+
+  const normalizedMethod = String(method ?? 'GET').toUpperCase()
+  return !['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod)
 }
 
 async function parseResponse(response) {
@@ -111,7 +133,8 @@ function buildRequestMeta({ method, path, token, searchParams, body }) {
     method,
     path,
     url: buildRequestUrl(path, searchParams),
-    hasAuthorization: Boolean(token),
+    hasAuthorization: Boolean(token && !isCookieBackedAdminSessionToken(token)),
+    usesCredentials: shouldIncludeCredentials(path),
   }
 
   if (!body) return request
@@ -164,9 +187,15 @@ export async function apiRequest(path, {
   const finalHeaders = new Headers(headers)
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const requestMeta = buildRequestMeta({ method, path, token, searchParams, body })
+  const includeCredentials = shouldIncludeCredentials(path)
+  const csrfToken = shouldAttachCsrfToken(path, method) ? getStoredAdminCsrfToken() : ''
 
-  if (token) {
+  if (token && !isCookieBackedAdminSessionToken(token)) {
     finalHeaders.set('Authorization', `Bearer ${token}`)
+  }
+
+  if (csrfToken && !finalHeaders.has(ADMIN_CSRF_HEADER_NAME)) {
+    finalHeaders.set(ADMIN_CSRF_HEADER_NAME, csrfToken)
   }
 
   let requestBody = body
@@ -181,6 +210,7 @@ export async function apiRequest(path, {
       headers: finalHeaders,
       body: requestBody,
       keepalive,
+      credentials: includeCredentials ? 'include' : 'same-origin',
       signal: signal ?? controller.signal,
     })
 
@@ -188,7 +218,7 @@ export async function apiRequest(path, {
 
     if (!response.ok) {
       const errorPayload = data?.error
-      if (response.status === 401 && token) {
+      if (response.status === 401 && (token || includeCredentials)) {
         emitUnauthorizedEvent(requestMeta)
       }
       throw new ApiError(
@@ -232,13 +262,19 @@ export function apiUploadRequest(path, {
   return new Promise((resolve, reject) => {
     const requestMeta = buildRequestMeta({ method, path, token, body })
     const xhr = new XMLHttpRequest()
+    const includeCredentials = shouldIncludeCredentials(path)
+    const csrfToken = shouldAttachCsrfToken(path, method) ? getStoredAdminCsrfToken() : ''
     xhr.open(method, buildRequestUrl(path))
     xhr.timeout = REQUEST_TIMEOUT_MS
-    xhr.withCredentials = false
+    xhr.withCredentials = includeCredentials
 
     const finalHeaders = new Headers(headers)
-    if (token) {
+    if (token && !isCookieBackedAdminSessionToken(token)) {
       finalHeaders.set('Authorization', `Bearer ${token}`)
+    }
+
+    if (csrfToken && !finalHeaders.has(ADMIN_CSRF_HEADER_NAME)) {
+      finalHeaders.set(ADMIN_CSRF_HEADER_NAME, csrfToken)
     }
 
     for (const [headerName, headerValue] of finalHeaders.entries()) {
@@ -262,7 +298,7 @@ export function apiUploadRequest(path, {
       }
 
       const errorPayload = data?.error
-      if (xhr.status === 401 && token) {
+      if (xhr.status === 401 && (token || includeCredentials)) {
         emitUnauthorizedEvent(requestMeta)
       }
       reject(new ApiError(

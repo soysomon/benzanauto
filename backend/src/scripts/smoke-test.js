@@ -9,6 +9,7 @@ async function run() {
   const smokeSecret = crypto.randomBytes(24).toString('hex')
   const smokeUserSuffix = crypto.randomBytes(4).toString('hex')
   const smokePassword = `Smoke-${crypto.randomBytes(8).toString('hex')}-A1!`
+  const csrfHeaderName = 'x-csrf-token'
 
   process.env.NODE_ENV = 'test'
   process.env.PORT = '4010'
@@ -48,8 +49,9 @@ async function run() {
     })
 
     const app = createApp()
+    const adminAgent = request.agent(app)
 
-    const loginResponse = await request(app)
+    const loginResponse = await adminAgent
       .post('/api/admin/auth/login')
       .send({
         username: process.env.SUPERADMIN_USERNAME,
@@ -58,14 +60,24 @@ async function run() {
 
     assert.equal(loginResponse.status, 200)
     assert.ok(loginResponse.body.token)
+    assert.ok(loginResponse.body.csrfToken)
+    assert.ok(
+      loginResponse.headers['set-cookie']?.some((header) => header.startsWith('benzan_admin_session=')),
+      'Expected secure admin session cookie to be set on login.',
+    )
 
-    const token = loginResponse.body.token
+    const csrfToken = loginResponse.body.csrfToken
+
+    const meResponse = await adminAgent.get('/api/admin/auth/me')
+    assert.equal(meResponse.status, 200)
+    assert.equal(meResponse.body.user.username, process.env.SUPERADMIN_USERNAME)
+    assert.equal(meResponse.body.csrfToken, csrfToken)
 
     clearSentEmailsForTesting()
 
-    const managedUserResponse = await request(app)
+    const managedUserResponse = await adminAgent
       .post('/api/admin/users')
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
       .send({
         name: 'Smoke Editor',
         username: `editor_${smokeUserSuffix}`,
@@ -123,29 +135,28 @@ async function run() {
     assert.equal(managedLoginResponse.status, 200)
     assert.equal(managedLoginResponse.body.user.role, 'editor')
 
-    const auditLogResponse = await request(app)
+    const auditLogResponse = await adminAgent
       .get('/api/admin/audit')
-      .set('Authorization', `Bearer ${token}`)
 
     assert.equal(auditLogResponse.status, 200)
     assert.ok(auditLogResponse.body.data.some((entry) => entry.action === 'user_created'))
     assert.ok(auditLogResponse.body.data.some((entry) => entry.action === 'password_reset_completed'))
 
-    const blockUserResponse = await request(app)
+    const blockUserResponse = await adminAgent
       .patch(`/api/admin/users/${managedUserId}/block`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
 
     assert.equal(blockUserResponse.status, 200)
 
-    const unblockUserResponse = await request(app)
+    const unblockUserResponse = await adminAgent
       .patch(`/api/admin/users/${managedUserId}/unblock`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
 
     assert.equal(unblockUserResponse.status, 200)
 
-    const createVehicleResponse = await request(app)
+    const createVehicleResponse = await adminAgent
       .post('/api/admin/vehicles')
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
       .send({
         title: 'Toyota Prado VX 2025',
         brand: 'Toyota',
@@ -188,9 +199,9 @@ async function run() {
       },
     }).png().toBuffer()
 
-    const uploadResponse = await request(app)
+    const uploadResponse = await adminAgent
       .post(`/api/admin/vehicles/${vehicleId}/images`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
       .attach('images', imageBuffer, { filename: 'vehicle.png', contentType: 'image/png' })
       .attach('images', secondaryImageBuffer, { filename: 'vehicle-2.png', contentType: 'image/png' })
 
@@ -203,9 +214,9 @@ async function run() {
     assert.ok(secondImage.id)
     assert.ok(uploadResponse.body.vehicle.mainImage)
 
-    const coverResponse = await request(app)
+    const coverResponse = await adminAgent
       .put(`/api/admin/vehicles/${vehicleId}`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
       .send({
         mainImageId: secondImage.id,
         imageOrder: [secondImage.id, firstImage.id],
@@ -216,9 +227,9 @@ async function run() {
     assert.equal(coverResponse.body.vehicle.images[0].isMain, true)
     assert.equal(coverResponse.body.vehicle.mainImage, secondImage.url)
 
-    const publishResponse = await request(app)
+    const publishResponse = await adminAgent
       .patch(`/api/admin/vehicles/${vehicleId}/publish`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
 
     assert.equal(publishResponse.status, 200)
     assert.equal(publishResponse.body.vehicle.status, 'published')
@@ -234,9 +245,9 @@ async function run() {
     assert.equal(storedVehicle.mainImage, secondImage.url)
     assert.equal(storedVehicle.images.find((image) => image.isMain)?.url, secondImage.url)
 
-    const featureResponse = await request(app)
+    const featureResponse = await adminAgent
       .patch(`/api/admin/vehicles/${vehicleId}/featured`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
       .send({ featured: true })
 
     assert.equal(featureResponse.status, 200)
@@ -276,18 +287,30 @@ async function run() {
     assert.equal(contactResponse.status, 200)
     assert.equal(contactResponse.body.contactCount, 1)
 
-    const statsResponse = await request(app)
+    const statsResponse = await adminAgent
       .get('/api/admin/dashboard/stats')
-      .set('Authorization', `Bearer ${token}`)
 
     assert.equal(statsResponse.status, 200)
     assert.equal(statsResponse.body.counts.totalVehicles, 1)
 
-    const deleteResponse = await request(app)
+    const deleteResponse = await adminAgent
       .delete(`/api/admin/vehicles/${vehicleId}`)
-      .set('Authorization', `Bearer ${token}`)
+      .set(csrfHeaderName, csrfToken)
 
     assert.equal(deleteResponse.status, 204)
+
+    const logoutResponse = await adminAgent
+      .post('/api/admin/auth/logout')
+      .set(csrfHeaderName, csrfToken)
+
+    assert.equal(logoutResponse.status, 200)
+    assert.ok(
+      logoutResponse.headers['set-cookie']?.some((header) => header.startsWith('benzan_admin_session=')),
+      'Expected session cookie clear header on logout.',
+    )
+
+    const meAfterLogoutResponse = await adminAgent.get('/api/admin/auth/me')
+    assert.equal(meAfterLogoutResponse.status, 401)
 
     console.log('Smoke test passed.')
   } finally {

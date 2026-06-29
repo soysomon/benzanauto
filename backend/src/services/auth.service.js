@@ -18,6 +18,7 @@ import {
   hashOpaqueToken,
   normalizeCredential,
 } from '../utils/password-policy.js'
+import { createAdminCsrfToken } from '../utils/admin-auth-cookie.js'
 
 const PASSWORD_SALT_ROUNDS = 12
 const DUMMY_PASSWORD_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEeO7d8r0lIsfRSAxEPPYUajF2/MEGLjmfu'
@@ -54,12 +55,14 @@ function createJwtForSession(user, session) {
 
 async function issueAdminSession(user, { ipAddress = null, userAgent = null } = {}) {
   const expiresAt = buildExpiresAt()
+  const csrfToken = createAdminCsrfToken()
   const session = await AdminSession.create({
     user: user._id,
     tokenId: crypto.randomUUID(),
     expiresAt,
     ipAddress,
     userAgent,
+    csrfToken,
     lastSeenAt: new Date(),
   })
 
@@ -68,7 +71,15 @@ async function issueAdminSession(user, { ipAddress = null, userAgent = null } = 
   return {
     token,
     session,
+    csrfToken,
     expiresIn: Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000)),
+  }
+}
+
+export function serializeAdminSessionPayload(session) {
+  return {
+    id: session.id,
+    expiresAt: session.expiresAt,
   }
 }
 
@@ -181,7 +192,7 @@ export async function loginAdmin({ identifier, username, password, ipAddress, us
   user.lastLoginAt = new Date()
   await user.save()
 
-  const { token, session, expiresIn } = await issueAdminSession(user, { ipAddress, userAgent })
+  const { token, session, csrfToken, expiresIn } = await issueAdminSession(user, { ipAddress, userAgent })
 
   await recordAuditLog({
     actorId: user.id,
@@ -197,11 +208,9 @@ export async function loginAdmin({ identifier, username, password, ipAddress, us
   return {
     message: 'Inicio de sesión exitoso.',
     token,
+    csrfToken,
     expiresIn,
-    session: {
-      id: session.id,
-      expiresAt: session.expiresAt,
-    },
+    session: serializeAdminSessionPayload(session),
     user: user.toSafeJSON(),
   }
 }
@@ -262,7 +271,7 @@ export async function changeOwnPassword({
 
   await revokeAllUserSessions(user.id, 'password_changed')
 
-  const { token, session, expiresIn } = await issueAdminSession(user, { ipAddress, userAgent })
+  const { token, session, csrfToken, expiresIn } = await issueAdminSession(user, { ipAddress, userAgent })
 
   await recordAuditLog({
     actorId: user.id,
@@ -286,11 +295,9 @@ export async function changeOwnPassword({
   return {
     message: 'Contraseña actualizada correctamente.',
     token,
+    csrfToken,
     expiresIn,
-    session: {
-      id: session.id,
-      expiresAt: session.expiresAt,
-    },
+    session: serializeAdminSessionPayload(session),
     user: user.toSafeJSON(),
   }
 }

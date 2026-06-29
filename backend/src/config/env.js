@@ -22,6 +22,19 @@ const parseBoolean = (fallback) =>
     return value
   }, z.boolean())
 
+const parseOptionalBoolean = () =>
+  z.preprocess((value) => {
+    if (value === undefined || value === null || value === '') return undefined
+    if (typeof value === 'boolean') return value
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase()
+      if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true
+      if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false
+    }
+
+    return value
+  }, z.boolean().optional())
+
 function hasValue(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -36,6 +49,12 @@ const envSchema = z.object({
   FRONTEND_ADMIN_URL: z.string().optional().default(''),
   FRONTEND_URLS: z.string().optional().default(''),
   TRUST_PROXY: parseBoolean(false).default(false),
+  ADMIN_AUTH_COOKIE_NAME: z.string().min(1).default('benzan_admin_session'),
+  ADMIN_AUTH_COOKIE_DOMAIN: z.string().optional().default(''),
+  ADMIN_AUTH_COOKIE_PATH: z.string().min(1).default('/api/admin'),
+  ADMIN_AUTH_COOKIE_SAME_SITE: z.enum(['strict', 'lax', 'none']).default('lax'),
+  ADMIN_AUTH_COOKIE_SECURE: parseOptionalBoolean(),
+  ADMIN_CSRF_HEADER_NAME: z.string().min(1).default('x-csrf-token'),
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   API_RATE_LIMIT_WINDOW_MS: parseInteger(60_000).default(60_000),
   API_RATE_LIMIT_MAX: parseInteger(120).default(120),
@@ -83,6 +102,14 @@ const envSchema = z.object({
   GROQ_API_KEY: z.string().optional().default(''),
   AI_TIMEOUT_MS: parseInteger(12_000).default(12_000),
   CHAT_INVENTORY_CACHE_MS: parseInteger(15_000).default(15_000),
+}).superRefine((config, ctx) => {
+  if (config.ADMIN_AUTH_COOKIE_SAME_SITE === 'none' && config.ADMIN_AUTH_COOKIE_SECURE === false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ADMIN_AUTH_COOKIE_SECURE'],
+      message: 'ADMIN_AUTH_COOKIE_SECURE debe ser true cuando ADMIN_AUTH_COOKIE_SAME_SITE=none.',
+    })
+  }
 }).superRefine((config, ctx) => {
   if (config.STORAGE_DRIVER !== 's3') return
 

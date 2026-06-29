@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as authController from '../../controllers/admin/auth.controller.js'
-import { authenticateAdmin } from '../../middlewares/auth.middleware.js'
+import { authenticateAdmin, requireAdminCsrf } from '../../middlewares/auth.middleware.js'
 import {
   forgotPasswordRateLimiter,
   loginRateLimiter,
@@ -22,7 +22,7 @@ router.post('/forgot-password', forgotPasswordRateLimiter, validateRequest({ bod
 router.post('/reset-password/validate', resetPasswordRateLimiter, validateRequest({ body: resetPasswordValidateBodySchema }), authController.validateResetPasswordToken)
 router.post('/reset-password', resetPasswordRateLimiter, validateRequest({ body: resetPasswordBodySchema }), authController.resetPassword)
 router.get('/me', authenticateAdmin, authController.me)
-router.post('/logout', authenticateAdmin, authController.logout)
-router.patch('/change-password', authenticateAdmin, validateRequest({ body: changePasswordBodySchema }), authController.changePassword)
+router.post('/logout', authenticateAdmin, requireAdminCsrf, authController.logout)
+router.patch('/change-password', authenticateAdmin, requireAdminCsrf, validateRequest({ body: changePasswordBodySchema }), authController.changePassword)
 
 export default router

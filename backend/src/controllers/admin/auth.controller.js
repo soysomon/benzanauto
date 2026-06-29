@@ -5,8 +5,13 @@ import {
   logoutAdmin,
   requestPasswordReset,
   resetPasswordWithToken,
+  serializeAdminSessionPayload,
   validatePasswordResetToken,
 } from '../../services/auth.service.js'
+import {
+  clearAdminSessionCookie,
+  setAdminSessionCookie,
+} from '../../utils/admin-auth-cookie.js'
 
 export const login = asyncHandler(async (req, res) => {
   const payload = req.validated.body
@@ -16,6 +21,7 @@ export const login = asyncHandler(async (req, res) => {
     userAgent: req.get('user-agent'),
   })
 
+  setAdminSessionCookie(res, response.token, response.session.expiresAt)
   res.status(200).json(response)
 })
 
@@ -48,10 +54,8 @@ export const resetPassword = asyncHandler(async (req, res) => {
 export const me = asyncHandler(async (req, res) => {
   res.json({
     user: req.auth.user.toSafeJSON(),
-    session: {
-      id: req.auth.session.id,
-      expiresAt: req.auth.session.expiresAt,
-    },
+    session: serializeAdminSessionPayload(req.auth.session),
+    csrfToken: req.auth.session.csrfToken ?? null,
   })
 })
 
@@ -61,6 +65,7 @@ export const logout = asyncHandler(async (req, res) => {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
   })
+  clearAdminSessionCookie(res)
   res.json({ message: 'Sesión cerrada correctamente.' })
 })
 
@@ -74,5 +79,6 @@ export const changePassword = asyncHandler(async (req, res) => {
     userAgent: req.get('user-agent'),
   })
 
+  setAdminSessionCookie(res, response.token, response.session.expiresAt)
   res.json(response)
 })

@@ -64,7 +64,8 @@ export const corsOptions = cors({
   origin(origin, callback) {
     return callback(null, isAllowedOrigin(origin))
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Authorization', 'Content-Type'],
+  allowedHeaders: ['Authorization', 'Content-Type', env.ADMIN_CSRF_HEADER_NAME],
   maxAge: 86_400,
 })

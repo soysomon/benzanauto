@@ -20,10 +20,11 @@ import {
   uploadAdminVehicleImages,
 } from '../lib/adminApi'
 import {
+  COOKIE_SESSION_TOKEN,
   clearStoredAdminToken,
   getStoredAdminToken,
   getStoredAdminUser,
-  setStoredAdminUser,
+  setStoredAdminSession,
 } from '../lib/adminSession'
 import { ApiError, UNAUTHORIZED_EVENT_NAME } from '../lib/apiClient'
 import { getVehicleDetail as getPublicVehicleDetail } from '../lib/publicApi'
@@ -1136,8 +1137,8 @@ export default function AdminDashboardPage() {
   const location = useLocation()
 
   const [token, setToken] = useState(() => getStoredAdminToken())
-  const [sessionLoading, setSessionLoading] = useState(() => Boolean(getStoredAdminToken()) && !getStoredAdminUser())
-  const [sessionRefreshing, setSessionRefreshing] = useState(() => Boolean(getStoredAdminToken()))
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [sessionRefreshing, setSessionRefreshing] = useState(true)
   const [session, setSession] = useState(() => {
     const cachedUser = getStoredAdminUser()
     return cachedUser ? { user: cachedUser, session: null } : null
@@ -1185,11 +1186,6 @@ export default function AdminDashboardPage() {
   const [customYearMode, setCustomYearMode] = useState(false)
 
   useEffect(() => {
-    if (!token) {
-      navigate('/admin-login', { replace: true })
-      return
-    }
-
     let ignore = false
 
     async function loadSession() {
@@ -1202,7 +1198,11 @@ export default function AdminDashboardPage() {
         const response = await getAdminMe(token)
         if (!ignore) {
           setSession(response)
-          setStoredAdminUser(response.user)
+          setStoredAdminSession(token || COOKIE_SESSION_TOKEN, response.user, {
+            csrfToken: response.csrfToken ?? '',
+            cookieBacked: true,
+          })
+          setToken(token || COOKIE_SESSION_TOKEN)
         }
       } catch (loadError) {
         if (!ignore) {

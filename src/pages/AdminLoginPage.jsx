@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AdminAuthLayout from '../components/admin/AdminAuthLayout'
-import { loginAdmin } from '../lib/adminApi'
-import { getStoredAdminToken, setStoredAdminSession } from '../lib/adminSession'
+import { getAdminMe, loginAdmin } from '../lib/adminApi'
+import { COOKIE_SESSION_TOKEN, getStoredAdminToken, setStoredAdminSession } from '../lib/adminSession'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
@@ -13,8 +13,34 @@ export default function AdminLoginPage() {
   const [message, setMessage] = useState(() => location.state?.message ?? '')
 
   useEffect(() => {
-    if (getStoredAdminToken()) {
-      navigate('/admin', { replace: true })
+    let ignore = false
+
+    async function resolveExistingSession() {
+      const storedToken = getStoredAdminToken()
+
+      if (storedToken) {
+        navigate('/admin', { replace: true })
+        return
+      }
+
+      try {
+        const response = await getAdminMe()
+        if (ignore) return
+
+        setStoredAdminSession(COOKIE_SESSION_TOKEN, response.user, {
+          csrfToken: response.csrfToken ?? '',
+          cookieBacked: true,
+        })
+        navigate('/admin', { replace: true })
+      } catch {
+        // noop: login page should stay visible if there is no active session
+      }
+    }
+
+    resolveExistingSession()
+
+    return () => {
+      ignore = true
     }
   }, [navigate])
 
@@ -25,7 +51,10 @@ export default function AdminLoginPage() {
       setError('')
       setMessage('')
       const response = await loginAdmin(form)
-      setStoredAdminSession(response.token, response.user)
+      setStoredAdminSession(response.token, response.user, {
+        csrfToken: response.csrfToken ?? '',
+        cookieBacked: true,
+      })
       navigate(
         response.user?.mustChangePassword ? '/admin/security?reason=must-change-password' : '/admin',
         { replace: true },

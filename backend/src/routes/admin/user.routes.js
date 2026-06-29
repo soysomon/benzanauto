@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as userController from '../../controllers/admin/user.controller.js'
-import { authenticateAdmin } from '../../middlewares/auth.middleware.js'
+import { authenticateAdmin, requireAdminCsrf } from '../../middlewares/auth.middleware.js'
 import { requirePermission } from '../../middlewares/authorize.middleware.js'
 import { validateRequest } from '../../middlewares/validate.middleware.js'
 import {
@@ -16,6 +16,7 @@ import {
 const router = Router()
 
 router.use(authenticateAdmin)
+router.use(requireAdminCsrf)
 router.use(requirePermission('manageAllUsers'))
 
 router.get('/', validateRequest({ query: userListQuerySchema }), userController.index)
