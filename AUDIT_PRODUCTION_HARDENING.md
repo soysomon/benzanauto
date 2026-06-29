@@ -397,12 +397,12 @@ Objetivo:
 - revisar CORS, credentials, SameSite y CSRF target
 - revisar errores expuestos y auth edge cases
 
-### Fase 2 - CI/CD y QA minimo
-- crear workflow de GitHub Actions
-- correr `npm run build`
-- correr `npm --prefix backend run smoke`
-- agregar gate minima para audit y checks de dependencias
-- formalizar checklist QA pre deploy
+### Fase 2 - CI/CD y QA robusto
+- crear workflow de GitHub Actions con gates separados
+- correr `build` + regresion frontend
+- correr smoke backend con cache para `mongodb-memory-server`
+- agregar control de dependencias en CI y Dependabot
+- formalizar checklist QA pre deploy y post deploy
 
 ### Fase 3 - SEO tecnico
 - metadata dinamica por ruta
@@ -503,7 +503,7 @@ Se dejo una compatibilidad controlada:
 - `npm --prefix backend audit --omit=dev`: PASS
 
 ### Pendientes que siguen abiertos
-- Fase 2: CI/CD y QA minimo
+- Fase 2: CI/CD y QA robusto
 - Fase 3: SEO tecnico
 - Fase 4: performance y code splitting
 - Fase 5: indices compuestos para escalabilidad de catalogo
@@ -511,3 +511,47 @@ Se dejo una compatibilidad controlada:
 - Fase 7: logger estructurado y observabilidad
 - Fase 8: accesibilidad y UX
 - Fase 9: dominio final del cliente
+
+## Fase 2 - Avance ejecutado
+Fecha de ejecucion: `2026-06-28`
+
+### Cambios implementados
+- pipeline `Quality Gate` en GitHub Actions para `push`, `pull_request` y ejecucion manual
+- jobs separados para:
+  - calidad frontend
+  - smoke backend
+  - audit de dependencias
+  - dependency review en PRs
+- version de Node unificada con Railway mediante `.nvmrc`
+- cache de binarios para `mongodb-memory-server` en CI
+- artefacto `frontend-dist` publicado desde CI para inspeccion del build
+- base real de regresion frontend con Vitest + Testing Library
+- cobertura inicial sobre:
+  - rutas criticas y redirecciones (`/login`, `/dashboard`, rutas publicas/admin)
+  - transporte admin en `apiClient`
+  - cache y fallback de inventario en `publicApi`
+- checklist formal de release y QA en `docs/QA_RELEASE_CHECKLIST.md`
+- automatizacion de actualizaciones mediante `.github/dependabot.yml`
+
+### Artefactos nuevos de la fase
+- `.github/workflows/quality-gate.yml`
+- `.github/dependabot.yml`
+- `.nvmrc`
+- `docs/QA_RELEASE_CHECKLIST.md`
+- `src/test/setup.js`
+- `src/App.routes.test.jsx`
+- `src/lib/__tests__/apiClient.test.js`
+- `src/lib/__tests__/publicApi.test.js`
+
+### Scripts nuevos o reforzados
+- `npm run test:frontend`
+- `npm run test:frontend:ci`
+- `npm run verify:frontend`
+- `npm run verify:backend`
+- `npm run verify:security`
+- `npm run verify:ci`
+
+### Resultado esperado despues de Fase 2
+- ningun cambio deberia desplegar sin pasar build, regresion frontend, smoke backend y audit de dependencias
+- el repositorio ya queda listo para trabajar con PRs y gates tecnicos antes de merge
+- la QA manual deja de depender de memoria informal y queda convertida en checklist operativa

@@ -28,12 +28,13 @@ function getCachedValue(store, key, ttlMs) {
   const cached = store.get(key)
   if (!cached) return null
 
-  if (Date.now() - cached.createdAt > ttlMs) {
-    store.delete(key)
-    return null
-  }
+  if (Date.now() - cached.createdAt > ttlMs) return null
 
   return cached.value
+}
+
+function getLastSuccessfulValue(store, key) {
+  return store.get(key)?.value ?? null
 }
 
 function setCachedValue(store, key, value) {
@@ -66,7 +67,7 @@ export async function listPublicVehicles(params = {}, options = {}) {
 
     return setCachedValue(publicVehicleListCache, cacheKey, mapVehicleCollectionResponse(response))
   } catch (error) {
-    const fallbackResponse = getCachedValue(publicVehicleListCache, cacheKey, Number.POSITIVE_INFINITY)
+    const fallbackResponse = getLastSuccessfulValue(publicVehicleListCache, cacheKey)
     if (fallbackResponse && [429, 500, 502, 503, 504].includes(error?.status)) {
       return fallbackResponse
     }
@@ -96,7 +97,7 @@ export async function getFeaturedVehicles(options = {}) {
       Array.isArray(response?.data) ? response.data.map(mapApiVehicle) : [],
     )
   } catch (error) {
-    const fallbackResponse = getCachedValue(featuredVehicleCache, cacheKey, Number.POSITIVE_INFINITY)
+    const fallbackResponse = getLastSuccessfulValue(featuredVehicleCache, cacheKey)
     if (fallbackResponse && [429, 500, 502, 503, 504].includes(error?.status)) {
       return fallbackResponse
     }

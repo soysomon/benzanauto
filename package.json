@@ -7,8 +7,18 @@
     "dev": "concurrently -k \"npm:dev:app\" \"npm:dev:api\"",
     "dev:app": "vite",
     "dev:api": "npm --prefix backend run dev",
+    "build:frontend": "vite build",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke:backend": "npm --prefix backend run smoke",
+    "test:frontend": "vitest",
+    "test:frontend:ci": "vitest run --reporter=dot",
+    "audit:frontend": "npm audit --omit=dev",
+    "audit:backend": "npm --prefix backend audit --omit=dev",
+    "verify:frontend": "npm run build:frontend && npm run test:frontend:ci",
+    "verify:backend": "npm run smoke:backend",
+    "verify:security": "npm run audit:frontend && npm run audit:backend",
+    "verify:ci": "npm run verify:frontend && npm run verify:backend && npm run verify:security"
   },
   "dependencies": {
     "framer-motion": "^11.1.5",
@@ -18,11 +28,15 @@
     "react-router-dom": "^6.30.4"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
     "concurrently": "^9.2.1",
+    "jsdom": "^26.1.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
-    "vite": "^5.2.11"
+    "vite": "^5.2.11",
+    "vitest": "^2.1.9"
   }
 }
