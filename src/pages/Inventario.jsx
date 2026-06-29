@@ -3,8 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import VehicleCard from '../components/ui/VehicleCard'
 import StatePanel from '../components/ui/StatePanel'
+import SeoMeta from '../components/seo/SeoMeta'
 import { buildWhatsAppUrl } from '../../shared/company.js'
 import { listPublicVehicles } from '../lib/publicApi'
+import { buildBreadcrumbStructuredData, buildInventoryItemListStructuredData } from '../lib/seoStructuredData'
 
 const fmt = (price) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price)
@@ -238,6 +240,40 @@ export default function Inventario() {
   }), [brands, categories, fuels, maxPrice, searchQuery, sortBy, statusFilter])
 
   const requestKey = useMemo(() => JSON.stringify(requestParams), [requestParams])
+  const inventorySeo = useMemo(() => {
+    const activeBrandsLabel = brands.slice(0, 2).join(', ')
+    const inventoryTitle = searchQuery
+      ? `Inventario: ${searchQuery}`
+      : activeBrandsLabel
+        ? `Inventario de ${activeBrandsLabel}`
+        : 'Inventario de vehículos nuevos y usados'
+
+    const inventoryDescription = [
+      meta.total > 0
+        ? `${meta.total} vehículos disponibles en Benzan Auto Import.`
+        : 'Explora el inventario actualizado de Benzan Auto Import.',
+      searchQuery ? `Búsqueda activa: ${searchQuery}.` : null,
+      statusFilter !== 'Todos' ? `Estado filtrado: ${statusFilter}.` : null,
+      brands.length > 0 ? `Marcas: ${brands.join(', ')}.` : null,
+      categories.length > 0 ? `Categorías: ${categories.join(', ')}.` : null,
+      fuels.length > 0 ? `Combustibles: ${fuels.join(', ')}.` : null,
+      'Filtra por marca, categoría, combustible y precio desde el inventario público.',
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    return {
+      title: inventoryTitle,
+      description: inventoryDescription,
+      jsonLd: [
+        buildBreadcrumbStructuredData([
+          { name: 'Inicio', path: '/' },
+          { name: 'Inventario', path: '/inventario' },
+        ]),
+        buildInventoryItemListStructuredData(vehicles),
+      ],
+    }
+  }, [brands, categories, fuels, meta.total, searchQuery, statusFilter, vehicles])
 
   useEffect(() => {
     let ignore = false
@@ -294,6 +330,12 @@ export default function Inventario() {
 
   return (
     <div className="bg-white min-h-screen pt-[72px]">
+      <SeoMeta
+        title={inventorySeo.title}
+        description={inventorySeo.description}
+        pathname="/inventario"
+        jsonLd={inventorySeo.jsonLd}
+      />
       <div className="max-w-[1400px] mx-auto px-6 lg:px-10">
         <div className="flex flex-col gap-4 py-8 border-b border-neutral-200 lg:flex-row lg:items-end lg:justify-between">
           <div>

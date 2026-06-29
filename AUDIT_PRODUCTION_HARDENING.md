@@ -405,13 +405,13 @@ Objetivo:
 - formalizar checklist QA pre deploy y post deploy
 
 ### Fase 3 - SEO tecnico
-- metadata dinamica por ruta
+- metadata dinamica por ruta con fallback global
 - title + description + canonical
-- Open Graph
-- JSON-LD
-- `robots.txt`
-- `sitemap.xml`
-- todo atado a `SITE_URL`
+- Open Graph + Twitter cards
+- JSON-LD en home, inventario y detalle
+- `robots.txt` generado por build
+- `sitemap.xml` generado por build con soporte para rutas dinamicas
+- todo atado a `VITE_SITE_URL`
 
 ### Fase 4 - Performance
 - `React.lazy`
@@ -503,8 +503,53 @@ Se dejo una compatibilidad controlada:
 - `npm --prefix backend audit --omit=dev`: PASS
 
 ### Pendientes que siguen abiertos
-- Fase 2: CI/CD y QA robusto
-- Fase 3: SEO tecnico
+- Fase 4: performance y code splitting
+- Fase 5: indices compuestos para escalabilidad de catalogo
+- Fase 6: correo productivo real
+- Fase 7: logger estructurado y observabilidad
+- Fase 8: accesibilidad y UX
+- Fase 9: dominio final del cliente
+
+## Fase 3 - Avance ejecutado
+Fecha de ejecucion: `2026-06-28`
+
+### Cambios implementados
+- metadata SEO dinamica por ruta usando `react-helmet-async`
+- fallback global de SEO para rutas publicas y `noindex` automatico para rutas admin
+- title, description y canonical por ruta
+- Open Graph y Twitter cards base
+- JSON-LD implementado en:
+  - home (`AutoDealer` + `WebSite`)
+  - inventario (`BreadcrumbList` + `ItemList`)
+  - detalle de vehiculo (`BreadcrumbList` + `Product`)
+- generacion automatizada de `robots.txt` y `sitemap.xml` durante el build
+- soporte de sitemap dinamico con slugs publicados desde la API publica cuando `VITE_API_URL` esta disponible
+- `SITE_URL` frontalizado via `VITE_SITE_URL`
+- configuracion de website del frontend y backend dejada alineada con variables, sin depender de dominio hardcodeado
+
+### Artefactos nuevos de la fase
+- `src/components/seo/SeoMeta.jsx`
+- `src/components/seo/RouteSeoDefaults.jsx`
+- `src/lib/seo.js`
+- `src/lib/seo.routes.js`
+- `src/lib/seoStructuredData.js`
+- `src/lib/__tests__/seo.test.js`
+- `scripts/generate-seo-assets.mjs`
+
+### Variables nuevas o reforzadas
+- `VITE_SITE_URL`
+- `VITE_DEFAULT_OG_IMAGE`
+
+### Resultado esperado despues de Fase 3
+- cada ruta publica relevante expone metadata consistente
+- admin y rutas internas no quedan indexables
+- el build produce `dist/robots.txt` y `dist/sitemap.xml`
+- el sistema queda listo para cambiar del dominio temporal al dominio final solo ajustando variables
+
+### Riesgo residual conocido
+- al ser una SPA sin SSR ni prerender, Google puede procesar la metadata dinamica, pero previews sociales profundas por slug pueden seguir siendo menos confiables que en una implementacion server-rendered o prerenderizada
+
+### Pendientes despues de Fase 3
 - Fase 4: performance y code splitting
 - Fase 5: indices compuestos para escalabilidad de catalogo
 - Fase 6: correo productivo real

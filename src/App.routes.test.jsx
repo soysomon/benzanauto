@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { HelmetProvider } from 'react-helmet-async'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.jsx'
 
@@ -86,6 +87,14 @@ vi.mock('./pages/AdminSecurityPage', () => ({
 }))
 
 describe('App critical routing', () => {
+  function renderApp() {
+    return render(
+      <HelmetProvider>
+        <App />
+      </HelmetProvider>,
+    )
+  }
+
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
@@ -97,7 +106,7 @@ describe('App critical routing', () => {
   it('renders public chrome on public routes', () => {
     window.history.pushState({}, '', '/')
 
-    render(<App />)
+    renderApp()
 
     expect(screen.getByText('Home Page')).toBeInTheDocument()
     expect(screen.getByTestId('navbar')).toBeInTheDocument()
@@ -109,7 +118,7 @@ describe('App critical routing', () => {
   it('redirects /login to /admin-login and removes public chrome', async () => {
     window.history.pushState({}, '', '/login')
 
-    render(<App />)
+    renderApp()
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/admin-login')
@@ -125,7 +134,7 @@ describe('App critical routing', () => {
   it('redirects legacy /dashboard to /admin', async () => {
     window.history.pushState({}, '', '/dashboard')
 
-    render(<App />)
+    renderApp()
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/admin')

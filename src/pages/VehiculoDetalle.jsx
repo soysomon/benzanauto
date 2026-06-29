@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import VehicleCard from '../components/ui/VehicleCard'
 import Badge from '../components/ui/Badge'
 import StatePanel from '../components/ui/StatePanel'
+import SeoMeta from '../components/seo/SeoMeta'
 import { COMPANY, buildPhoneUrl, buildWhatsAppUrl } from '../../shared/company.js'
 import { getVehicleDetail, listPublicVehicles, trackVehicleContact } from '../lib/publicApi'
+import { buildBreadcrumbStructuredData, buildVehicleStructuredData } from '../lib/seoStructuredData'
 
 export default function VehiculoDetalle() {
   const { slug } = useParams()
@@ -67,6 +69,45 @@ export default function VehiculoDetalle() {
 
   const gallery = vehicle?.gallery?.length ? vehicle.gallery : vehicle?.image ? [vehicle.image] : []
   const contactIdentifier = vehicle?.slug ?? vehicle?.backendId ?? vehicle?.legacyId ?? vehicle?.id ?? null
+  const detailSeo = useMemo(() => {
+    if (!vehicle) {
+      return {
+        title: 'Vehículo no disponible',
+        description: 'La unidad que buscas ya no está publicada o no está disponible en este momento.',
+        noIndex: true,
+        jsonLd: [
+          buildBreadcrumbStructuredData([
+            { name: 'Inicio', path: '/' },
+            { name: 'Inventario', path: '/inventario' },
+          ]),
+        ],
+      }
+    }
+
+    const detailTitle = `${vehicle.brand} ${vehicle.model} ${vehicle.year}`
+    const detailDescription = [
+      `${vehicle.condition} disponible en Benzan Auto Import.`,
+      `Precio ${formatPrice(vehicle.price, vehicle.currency)}.`,
+      vehicle.location ? `Ubicación: ${vehicle.location}.` : null,
+      vehicle.description || null,
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    return {
+      title: detailTitle,
+      description: detailDescription,
+      image: vehicle.mainImage || vehicle.image || '',
+      jsonLd: [
+        buildBreadcrumbStructuredData([
+          { name: 'Inicio', path: '/' },
+          { name: 'Inventario', path: '/inventario' },
+          { name: detailTitle, path: `/vehiculo/${vehicle.slug}` },
+        ]),
+        buildVehicleStructuredData(vehicle),
+      ],
+    }
+  }, [vehicle])
 
   const registerContact = () => {
     if (!contactIdentifier) return
@@ -94,6 +135,12 @@ export default function VehiculoDetalle() {
   if (loading) {
     return (
       <div className="bg-white min-h-screen pt-24">
+        <SeoMeta
+          title="Cargando vehículo"
+          description="Cargando la ficha del vehículo solicitado en Benzan Auto Import."
+          pathname={`/vehiculo/${slug}`}
+          noIndex
+        />
         <div className="container-pad py-10">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
             <div className="lg:col-span-3">
@@ -117,6 +164,13 @@ export default function VehiculoDetalle() {
   if (!vehicle) {
     return (
       <div className="bg-white min-h-screen pt-24">
+        <SeoMeta
+          title={detailSeo.title}
+          description={detailSeo.description}
+          pathname={`/vehiculo/${slug}`}
+          noIndex={detailSeo.noIndex}
+          jsonLd={detailSeo.jsonLd}
+        />
         <div className="container-pad py-16">
           <StatePanel
             title="Vehículo no disponible"
@@ -131,6 +185,13 @@ export default function VehiculoDetalle() {
 
   return (
     <>
+      <SeoMeta
+        title={detailSeo.title}
+        description={detailSeo.description}
+        pathname={`/vehiculo/${vehicle.slug}`}
+        image={detailSeo.image}
+        jsonLd={detailSeo.jsonLd}
+      />
       <div className="pt-24 pb-4 bg-white border-b border-neutral-200">
         <div className="container-pad">
           <Link

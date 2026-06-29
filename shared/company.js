@@ -1,8 +1,33 @@
+function normalizeSiteUrl(rawValue) {
+  if (typeof rawValue !== 'string') return ''
+
+  const trimmed = rawValue.trim().replace(/\/$/, '')
+  if (!trimmed) return ''
+
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(trimmed)) return `http://${trimmed}`
+  return `https://${trimmed}`
+}
+
+const resolvedWebsite = normalizeSiteUrl(import.meta.env.VITE_SITE_URL)
+  || (typeof window !== 'undefined' ? normalizeSiteUrl(window.location.origin) : '')
+
+const resolvedWebsiteHost = (() => {
+  if (!resolvedWebsite) return ''
+
+  try {
+    return new URL(resolvedWebsite).host
+  } catch {
+    return ''
+  }
+})()
+
 export const COMPANY = Object.freeze({
   name: 'Benzan Auto Import',
   assistantName: 'Benzan AI',
-  website: 'https://benzanautoimport.com',
-  websiteHost: 'benzanautoimport.com',
+  website: resolvedWebsite,
+  websiteHost: resolvedWebsiteHost,
   email: 'info@benzanautoimport.com',
   phoneDisplay: '(809) 555-0000',
   phoneHref: '+18095041974',

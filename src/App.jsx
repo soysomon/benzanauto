@@ -20,6 +20,7 @@ import AdminResetPasswordPage from './pages/AdminResetPasswordPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import AdminAuditPage from './pages/AdminAuditPage'
 import AdminSecurityPage from './pages/AdminSecurityPage'
+import RouteSeoDefaults from './components/seo/RouteSeoDefaults'
 
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
@@ -97,6 +98,7 @@ function RouteAwareChrome() {
   return (
     <>
       {!isAdminRoute && <CustomCursor />}
+      <RouteSeoDefaults />
       <ScrollToTop />
       <main>
         <AnimatedRoutes />

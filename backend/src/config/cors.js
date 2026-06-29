@@ -4,7 +4,9 @@ import { env } from './env.js'
 
 const DEFAULT_ALLOWED_ORIGINS = [
   COMPANY.website,
-  `https://www.${COMPANY.websiteHost}`,
+  COMPANY.websiteHost && !COMPANY.websiteHost.startsWith('www.')
+    ? `https://www.${COMPANY.websiteHost}`
+    : '',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',

@@ -31,10 +31,13 @@ No desplegar si falla cualquiera de estas condiciones:
 
 ## 3. QA manual crítica - Público
 - Home carga sin errores visibles.
+- Home publica title, description, canonical y Open Graph correctos.
 - La sección de vehículos recientes muestra inventario real.
 - `/inventario` carga sin 429 ni loops de requests.
+- `/inventario` publica metadata canónica y no indexa parámetros como canonical principal.
 - Los filtros de inventario responden sin duplicar llamadas.
 - El detalle `/vehiculo/:slug` carga imagen principal, galería y CTA.
+- El detalle `/vehiculo/:slug` publica title, description y JSON-LD coherentes con el vehículo real.
 - El widget de Benzan IA responde con inventario real publicado.
 - Formularios públicos y CTA de WhatsApp abren correctamente.
 - Navegación principal y footer funcionan en móvil y desktop.
@@ -55,6 +58,8 @@ No desplegar si falla cualquiera de estas condiciones:
 ## 5. QA técnica
 - `GET /health` responde `ok` o el estado esperado sin degradación inesperada.
 - `GET /ready` responde correctamente en el backend desplegado.
+- `robots.txt` responde correctamente.
+- `sitemap.xml` responde correctamente y contiene rutas públicas válidas.
 - No hay errores 5xx sostenidos en Railway.
 - No hay 401 falsos después de acciones exitosas.
 - No hay 429 para navegación pública normal.
