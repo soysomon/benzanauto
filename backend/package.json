@@ -10,6 +10,7 @@
     "seed": "node src/scripts/seed.js",
     "smoke": "node src/scripts/smoke-test.js",
     "email:verify": "node src/scripts/verify-email.js",
+    "superadmin:reset-password": "node src/scripts/reset-superadmin-password.js",
     "indexes:diff": "node src/scripts/sync-indexes.js",
     "indexes:sync": "node src/scripts/sync-indexes.js --apply",
     "audit:prod": "npm audit --omit=dev",
