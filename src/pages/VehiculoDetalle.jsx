@@ -34,6 +34,36 @@ function trapFocusInElement(container, event) {
   }
 }
 
+function normalizeSpecValue(value) {
+  if (Array.isArray(value)) {
+    const normalizedItems = value
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+
+    return normalizedItems.join(', ')
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Sí' : 'No'
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : ''
+  }
+
+  if (value && typeof value === 'object') {
+    return ''
+  }
+
+  return String(value ?? '').trim()
+}
+
+function formatSpecLabel(label) {
+  return String(label ?? '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+}
+
 export default function VehiculoDetalle() {
   const { slug } = useParams()
   const navigate = useNavigate()
@@ -138,6 +168,18 @@ export default function VehiculoDetalle() {
         buildVehicleStructuredData(vehicle),
       ],
     }
+  }, [vehicle])
+
+  const specEntries = useMemo(() => {
+    if (!vehicle?.specs || typeof vehicle.specs !== 'object') return []
+
+    return Object.entries(vehicle.specs)
+      .map(([key, value]) => ({
+        key,
+        label: formatSpecLabel(key),
+        value: normalizeSpecValue(value),
+      }))
+      .filter((entry) => entry.label && entry.value)
   }, [vehicle])
 
   const registerContact = () => {
@@ -390,18 +432,22 @@ export default function VehiculoDetalle() {
         </div>
       </section>
 
-      {vehicle.specs && Object.keys(vehicle.specs).length > 0 && (
+      {specEntries.length > 0 && (
         <section className="bg-neutral-50 border-t border-neutral-200 py-16">
           <div className="container-pad">
             <div className="flex items-center gap-3 mb-8">
               <span className="block w-8 h-px bg-b-red" />
               <h2 className="font-heading text-xl font-700 text-neutral-900 uppercase tracking-widest">Ficha Técnica</h2>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-px bg-neutral-200">
-              {Object.entries(vehicle.specs).map(([key, value]) => (
-                <div key={key} className="bg-neutral-50 p-5">
-                  <p className="font-body text-[10px] text-neutral-400 uppercase tracking-widest mb-1 capitalize">{key}</p>
-                  <p className="font-body text-neutral-900 text-sm font-medium">{value}</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {specEntries.map((entry) => (
+                <div key={entry.key} className="rounded-[24px] border border-neutral-200 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(10,10,10,0.03)]">
+                  <p className="font-body text-[10px] text-neutral-400 uppercase tracking-widest mb-1">
+                    {entry.label}
+                  </p>
+                  <p className="font-body text-neutral-900 text-sm font-medium leading-relaxed">
+                    {entry.value}
+                  </p>
                 </div>
               ))}
             </div>
