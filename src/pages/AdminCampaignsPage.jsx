@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import AdminPageShell from '../components/admin/AdminPageShell'
 import StatePanel from '../components/ui/StatePanel'
+import FloatingToast from '../components/ui/FloatingToast'
 import { useAdminPageSession } from '../hooks/useAdminPageSession'
 import {
   createAdminCampaign,
@@ -34,6 +35,7 @@ const DEVICE_OPTIONS = [
   { value: 'tablet', label: 'Tablet' },
   { value: 'mobile', label: 'Mobile' },
 ]
+const HOMEPAGE_ROUTE = '/'
 
 function roleCanManageCampaigns(role) {
   return ['superadmin', 'admin', 'editor'].includes(role)
@@ -54,18 +56,8 @@ function createCampaignForm() {
     frequencyRule: 'session',
     priority: '100',
     displayType: 'modal',
-    targetRoutes: '*',
     targetDevices: DEVICE_OPTIONS.map((option) => option.value),
   }
-}
-
-function parseRouteTargets(value) {
-  const normalized = String(value ?? '')
-    .split(/[\n,]/)
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-
-  return normalized.length ? normalized : ['*']
 }
 
 function toDateTimeLocalValue(value) {
@@ -92,7 +84,7 @@ function buildCampaignPayload(form, { forceStatus = null } = {}) {
     frequencyRule: form.frequencyRule,
     priority: Number(form.priority || 0),
     displayType: form.displayType,
-    targetRoutes: parseRouteTargets(form.targetRoutes),
+    targetRoutes: [HOMEPAGE_ROUTE],
     targetDevices: form.targetDevices,
   }
 }
@@ -112,9 +104,6 @@ function campaignToForm(campaign) {
     frequencyRule: campaign.frequencyRule ?? 'session',
     priority: String(campaign.priority ?? 100),
     displayType: campaign.displayType ?? 'modal',
-    targetRoutes: Array.isArray(campaign.targetRoutes) && campaign.targetRoutes.length
-      ? campaign.targetRoutes.join('\n')
-      : '*',
     targetDevices: Array.isArray(campaign.targetDevices) && campaign.targetDevices.length
       ? campaign.targetDevices
       : DEVICE_OPTIONS.map((option) => option.value),
@@ -469,7 +458,7 @@ export default function AdminCampaignsPage() {
   return (
     <AdminPageShell
       title="Campañas promocionales"
-      description="Gestiona banners y modales promocionales del sitio con publicación controlada por prioridad, fechas, rutas y dispositivos."
+      description="Gestiona campañas promocionales del homepage con publicación controlada por prioridad, ventana activa y dispositivos objetivo."
       sessionState={sessionState}
       actions={(
         <button
@@ -481,6 +470,11 @@ export default function AdminCampaignsPage() {
         </button>
       )}
     >
+      <FloatingToast
+        message={feedback}
+        onDismiss={() => setFeedback('')}
+      />
+
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-[32px] bg-white p-6 shadow-sm">
           <SectionLabel>Listado editorial</SectionLabel>
@@ -510,12 +504,6 @@ export default function AdminCampaignsPage() {
           {error ? (
             <div className="mt-4 rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-5 py-4 font-body text-sm text-[#b31a2b]" role="alert">
               {error}
-            </div>
-          ) : null}
-
-          {feedback ? (
-            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 font-body text-sm text-emerald-700" role="status">
-              {feedback}
             </div>
           ) : null}
 
@@ -574,9 +562,9 @@ export default function AdminCampaignsPage() {
                         </p>
                       </div>
                       <div className="rounded-2xl border border-[#F1F1F1] px-4 py-3">
-                        <p className="font-body text-[11px] uppercase tracking-[0.22em] text-[#B5B5B5]">Destinos</p>
+                        <p className="font-body text-[11px] uppercase tracking-[0.22em] text-[#B5B5B5]">Ubicación</p>
                         <p className="mt-2 font-body text-sm text-[#444]">
-                          {campaign.targetRoutes.join(', ')}
+                          Homepage ({HOMEPAGE_ROUTE})
                         </p>
                       </div>
                     </div>
@@ -651,7 +639,7 @@ export default function AdminCampaignsPage() {
               <div className="rounded-[28px] border border-dashed border-[#E5E5E5] bg-[#FCFCFC]">
                 <StatePanel
                   title="Sin campañas todavía"
-                  message="Crea tu primera campaña promocional y actívala cuando el banner y la segmentación estén listos."
+                  message="Crea tu primera campaña promocional para el homepage y actívala cuando el banner esté listo."
                   actionLabel="Crear campaña"
                   onAction={openCreate}
                   className="py-20"
@@ -693,7 +681,7 @@ export default function AdminCampaignsPage() {
             {form.id ? 'Editar campaña' : 'Nueva campaña'}
           </h2>
           <p className="mt-3 font-body text-sm leading-relaxed text-[#666]">
-            Prepara el copy, segmenta rutas y dispositivos, define la frecuencia y activa cuando el banner esté listo.
+            Prepara el copy del modal del homepage, define frecuencia y prioridad, y actívalo cuando el banner esté listo.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-5">
@@ -928,22 +916,14 @@ export default function AdminCampaignsPage() {
               </div>
             </div>
 
-            <div>
-              <label className="font-body text-sm text-[#444]" htmlFor="campaign-target-routes">Rutas objetivo</label>
-              <textarea
-                id="campaign-target-routes"
-                rows={4}
-                value={form.targetRoutes}
-                onChange={(event) => updateForm('targetRoutes', event.target.value)}
-                className={`${inputClass(Boolean(formErrors.targetRoutes))} mt-2 resize-none`}
-                placeholder="*
-/inventario
-/vehiculo/*"
-              />
-              <p className="mt-2 font-body text-xs text-[#777]">
-                Usa una ruta por línea o separadas por coma. Soporta comodines simples como <code>/vehiculo/*</code>.
+            <div className="rounded-[24px] border border-[#F1F1F1] bg-[#FCFCFC] px-5 py-4">
+              <p className="font-body text-sm text-[#444]">Ubicación pública</p>
+              <p className="mt-2 font-body text-sm text-[#0A0A0A]">
+                Esta campaña promocional se muestra exclusivamente en el homepage ({HOMEPAGE_ROUTE}).
               </p>
-              <FieldError message={formErrors.targetRoutes} />
+              <p className="mt-2 font-body text-xs text-[#777]">
+                La experiencia se controla para no interrumpir al usuario en páginas internas del portal.
+              </p>
             </div>
 
             <div>

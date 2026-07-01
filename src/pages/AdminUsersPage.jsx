@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import AdminPageShell from '../components/admin/AdminPageShell'
+import FloatingToast from '../components/ui/FloatingToast'
 import { useAdminPageSession } from '../hooks/useAdminPageSession'
 import {
   blockAdminUser,
@@ -355,6 +356,11 @@ export default function AdminUsersPage() {
         </button>
       )}
     >
+      <FloatingToast
+        message={feedback}
+        onDismiss={() => setFeedback('')}
+      />
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_420px]">
         <section className="rounded-[32px] bg-white p-6 shadow-sm space-y-5">
           <div className="grid gap-3 md:grid-cols-4">
@@ -391,12 +397,6 @@ export default function AdminUsersPage() {
           {error ? (
             <div className="rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-4 py-3.5 font-body text-sm text-[#b31a2b]">
               {error}
-            </div>
-          ) : null}
-
-          {feedback ? (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 font-body text-sm text-emerald-800">
-              {feedback}
             </div>
           ) : null}
 

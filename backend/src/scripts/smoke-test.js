@@ -277,7 +277,7 @@ async function run() {
         frequencyRule: 'session',
         priority: 300,
         displayType: 'modal',
-        targetRoutes: ['/', '/inventario', '/vehiculo/*'],
+        targetRoutes: ['*'],
         targetDevices: ['desktop', 'mobile'],
       })
 
@@ -305,12 +305,13 @@ async function run() {
     assert.ok(storedCampaign)
     assert.equal(storedCampaign.status, 'active')
     assert.ok(storedCampaign.image?.url)
+    assert.deepEqual(storedCampaign.targetRoutes, ['/'])
     assert.equal(storedCampaign.targetDevices.includes('desktop'), true)
 
     const publicCampaignResponse = await request(app)
       .get('/api/campaigns/active')
       .query({
-        route: '/inventario',
+        route: '/',
         device: 'desktop',
       })
 

@@ -18,7 +18,6 @@ import {
   loadBombaGasolinaPage,
   loadChatWidget,
   loadContactoPage,
-  loadCustomCursor,
   loadHomePage,
   loadInventarioPage,
   loadNotFoundPage,
@@ -27,7 +26,6 @@ import {
   loadVehiculoDetallePage,
 } from './lib/routeModules'
 
-const CustomCursor = lazy(loadCustomCursor)
 const ChatWidget = lazy(loadChatWidget)
 const PromotionalCampaignModal = lazy(() => import('./components/campaigns/PromotionalCampaignModal'))
 const Home = lazy(loadHomePage)
@@ -96,15 +94,11 @@ export default function App() {
 function RouteAwareChrome() {
   const location = useLocation()
   const isAdminRoute = location.pathname.startsWith('/admin')
+  const isHomepage = location.pathname === '/'
   const deferredPublicChromeReady = useIdleActivation(!isAdminRoute)
 
   return (
     <>
-      {!isAdminRoute && deferredPublicChromeReady ? (
-        <Suspense fallback={null}>
-          <CustomCursor />
-        </Suspense>
-      ) : null}
       <RouteSeoDefaults />
       <ScrollToTop />
       <a
@@ -117,7 +111,7 @@ function RouteAwareChrome() {
       <main id="main-content" tabIndex={-1} className="min-h-screen focus:outline-none">
         <AppRoutes />
       </main>
-      {!isAdminRoute ? (
+      {!isAdminRoute && isHomepage ? (
         <Suspense fallback={null}>
           <PromotionalCampaignModal />
         </Suspense>

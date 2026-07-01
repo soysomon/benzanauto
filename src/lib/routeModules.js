@@ -1,4 +1,3 @@
-export const loadCustomCursor = () => import('../components/ui/CustomCursor')
 export const loadChatWidget = () => import('../components/ui/ChatWidget')
 export const loadHomePage = () => import('../pages/Home')
 export const loadInventarioPage = () => import('../pages/Inventario')

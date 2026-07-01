@@ -22,18 +22,6 @@
     outline-offset: 3px;
   }
 
-  @media (hover: hover) and (pointer: fine) {
-    body.has-custom-cursor {
-      cursor: none;
-    }
-
-    body.has-custom-cursor *,
-    body.has-custom-cursor *::before,
-    body.has-custom-cursor *::after {
-      cursor: none !important;
-    }
-  }
-
   ::selection {
     background-color: #D4001A;
     color: white;
@@ -62,13 +50,6 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
-    }
-
-    body.has-custom-cursor,
-    body.has-custom-cursor *,
-    body.has-custom-cursor *::before,
-    body.has-custom-cursor *::after {
-      cursor: auto !important;
     }
   }
 

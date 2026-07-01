@@ -5,6 +5,8 @@ import { getActivePromotionalCampaign } from '../../lib/publicApi'
 import { prefetchRoute } from '../../lib/routeModules'
 
 const STORAGE_PREFIX = 'benzan:campaign:v1'
+const HOMEPAGE_ROUTE = '/'
+const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
 
 function getSafeStorage(type) {
   if (typeof window === 'undefined') return null
@@ -20,46 +22,43 @@ function getStorageKey(id) {
   return `${STORAGE_PREFIX}:${id}`
 }
 
-function readCampaignDisplayState(id) {
-  const storage = getSafeStorage('local')
-  const sessionStorage = getSafeStorage('session')
+function readCampaignDisplayState(id, frequencyRule) {
   const key = getStorageKey(id)
 
   try {
-    const persisted = storage?.getItem(key)
-    const session = sessionStorage?.getItem(key)
+    if (frequencyRule === 'session') {
+      const rawSessionValue = getSafeStorage('session')?.getItem(key)
+      return rawSessionValue ? JSON.parse(rawSessionValue) : {}
+    }
 
-    return {
-      local: persisted ? JSON.parse(persisted) : {},
-      session: session ? JSON.parse(session) : {},
+    if (['daily', 'once'].includes(frequencyRule)) {
+      const rawPersistedValue = getSafeStorage('local')?.getItem(key)
+      return rawPersistedValue ? JSON.parse(rawPersistedValue) : {}
     }
+
+    return {}
   } catch {
-    return {
-      local: {},
-      session: {},
-    }
+    return {}
   }
 }
 
-function persistCampaignDisplayState(id, frequencyRule) {
+function persistCampaignDisplayState(id, frequencyRule, reason = 'shown') {
   const now = Date.now()
   const key = getStorageKey(id)
-  const sessionStorage = getSafeStorage('session')
-  const localStorage = getSafeStorage('local')
-  const nextState = { shownAt: now }
+  const nextState = { handledAt: now, reason }
+
+  const storage = frequencyRule === 'session'
+    ? getSafeStorage('session')
+    : ['daily', 'once'].includes(frequencyRule)
+      ? getSafeStorage('local')
+      : null
+
+  if (!storage) return
 
   try {
-    sessionStorage?.setItem(key, JSON.stringify(nextState))
+    storage.setItem(key, JSON.stringify(nextState))
   } catch {
     // noop
-  }
-
-  if (['daily', 'once'].includes(frequencyRule)) {
-    try {
-      localStorage?.setItem(key, JSON.stringify(nextState))
-    } catch {
-      // noop
-    }
   }
 }
 
@@ -85,17 +84,16 @@ function getCurrentDevice() {
 function shouldShowCampaign(campaign) {
   if (!campaign?.id) return false
 
-  const { local, session } = readCampaignDisplayState(campaign.id)
-  const lastSeenAt = Number(local?.shownAt ?? 0)
-  const lastSeenInSessionAt = Number(session?.shownAt ?? 0)
+  const state = readCampaignDisplayState(campaign.id, campaign.frequencyRule)
+  const lastHandledAt = Number(state?.handledAt ?? 0)
 
   switch (campaign.frequencyRule) {
     case 'once':
-      return !lastSeenAt
+      return !lastHandledAt
     case 'daily':
-      return !lastSeenAt || Date.now() - lastSeenAt >= 24 * 60 * 60 * 1000
+      return !lastHandledAt || Date.now() - lastHandledAt >= DAILY_WINDOW_MS
     case 'session':
-      return !lastSeenInSessionAt
+      return !lastHandledAt
     case 'always':
     default:
       return true
@@ -126,6 +124,7 @@ export default function PromotionalCampaignModal() {
   const reduceMotion = useReducedMotion()
   const location = useLocation()
   const pathname = useMemo(() => normalizePathname(location.pathname), [location.pathname])
+  const isHomepage = pathname === HOMEPAGE_ROUTE
   const titleId = useId()
   const descriptionId = useId()
   const closeButtonRef = useRef(null)
@@ -135,15 +134,25 @@ export default function PromotionalCampaignModal() {
 
   useEffect(() => {
     const controller = new AbortController()
-    const device = getCurrentDevice()
-
     setOpen(false)
     setCampaign(null)
+
+    if (!isHomepage) {
+      return () => {
+        controller.abort()
+        if (timerRef.current) {
+          window.clearTimeout(timerRef.current)
+          timerRef.current = null
+        }
+      }
+    }
+
+    const device = getCurrentDevice()
 
     async function loadCampaign() {
       try {
         const nextCampaign = await getActivePromotionalCampaign({
-          route: pathname,
+          route: HOMEPAGE_ROUTE,
           device,
         }, {
           signal: controller.signal,
@@ -157,7 +166,7 @@ export default function PromotionalCampaignModal() {
 
         const delayMs = Math.max(0, Number(nextCampaign.delaySeconds ?? 0)) * 1000
         timerRef.current = window.setTimeout(() => {
-          persistCampaignDisplayState(nextCampaign.id, nextCampaign.frequencyRule)
+          persistCampaignDisplayState(nextCampaign.id, nextCampaign.frequencyRule, 'shown')
           setOpen(true)
         }, delayMs)
       } catch {
@@ -174,7 +183,7 @@ export default function PromotionalCampaignModal() {
         timerRef.current = null
       }
     }
-  }, [pathname])
+  }, [isHomepage, pathname])
 
   useEffect(() => {
     if (!campaign?.ctaUrl || !isInternalCta(campaign.ctaUrl)) return
@@ -204,6 +213,9 @@ export default function PromotionalCampaignModal() {
   }, [open, reduceMotion])
 
   const dismiss = () => {
+    if (campaign) {
+      persistCampaignDisplayState(campaign.id, campaign.frequencyRule, 'dismissed')
+    }
     setOpen(false)
   }
 

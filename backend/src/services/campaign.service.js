@@ -5,6 +5,7 @@ import { recordAuditLog } from './audit.service.js'
 
 const DEFAULT_TARGET_ROUTES = Object.freeze(['*'])
 const DEFAULT_TARGET_DEVICES = Object.freeze(['desktop', 'tablet', 'mobile'])
+const HOMEPAGE_CAMPAIGN_ROUTE = '/'
 const PUBLIC_CAMPAIGN_PROJECTION = Object.freeze({
   _id: 1,
   title: 1,
@@ -48,6 +49,10 @@ function normalizeTargetRoutes(routes = []) {
     .filter(Boolean))]
 
   return normalized.length ? normalized : [...DEFAULT_TARGET_ROUTES]
+}
+
+function getModalTargetRoutes() {
+  return [HOMEPAGE_CAMPAIGN_ROUTE]
 }
 
 function normalizeTargetDevices(devices = []) {
@@ -187,6 +192,9 @@ function serializeUserSummary(user) {
 export function serializeAdminCampaign(campaign) {
   const plain = campaign.toObject ? campaign.toObject() : campaign
   const image = serializeImage(plain.image, plain.imageAlt || plain.title)
+  const targetRoutes = plain.displayType === 'modal'
+    ? getModalTargetRoutes()
+    : normalizeTargetRoutes(plain.targetRoutes)
 
   return {
     id: String(plain._id),
@@ -204,7 +212,7 @@ export function serializeAdminCampaign(campaign) {
     frequencyRule: plain.frequencyRule ?? 'session',
     priority: plain.priority ?? 100,
     displayType: plain.displayType ?? 'modal',
-    targetRoutes: normalizeTargetRoutes(plain.targetRoutes),
+    targetRoutes,
     targetDevices: normalizeTargetDevices(plain.targetDevices),
     createdBy: serializeUserSummary(plain.createdBy),
     updatedBy: serializeUserSummary(plain.updatedBy),
@@ -279,7 +287,7 @@ export async function createCampaign(payload, actor, context = {}) {
     frequencyRule: payload.frequencyRule ?? 'session',
     priority: payload.priority ?? 100,
     displayType: payload.displayType ?? 'modal',
-    targetRoutes: normalizeTargetRoutes(payload.targetRoutes),
+    targetRoutes: getModalTargetRoutes(),
     targetDevices: normalizeTargetDevices(payload.targetDevices),
     createdBy: actor.id,
     updatedBy: actor.id,
@@ -342,11 +350,15 @@ export async function updateCampaign(id, payload, actor, context = {}) {
   }
 
   if ('targetRoutes' in payload) {
-    campaign.targetRoutes = normalizeTargetRoutes(payload.targetRoutes)
+    campaign.targetRoutes = getModalTargetRoutes()
   }
 
   if ('targetDevices' in payload) {
     campaign.targetDevices = normalizeTargetDevices(payload.targetDevices)
+  }
+
+  if (campaign.displayType === 'modal') {
+    campaign.targetRoutes = getModalTargetRoutes()
   }
 
   campaign.updatedBy = actor.id
@@ -431,7 +443,9 @@ export async function getActiveCampaignForContext(query = {}) {
     .lean()
 
   const match = candidates.find((campaign) =>
-    matchesRoute(campaign.targetRoutes, currentRoute)
+    (campaign.displayType === 'modal'
+      ? currentRoute === HOMEPAGE_CAMPAIGN_ROUTE
+      : matchesRoute(campaign.targetRoutes, currentRoute))
     && matchesDevice(campaign.targetDevices, currentDevice))
 
   return match ? serializePublicCampaign(match) : null

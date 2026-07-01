@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { COMPANY } from '../../shared/company.js'
 import AdminViewTransition from '../components/admin/AdminViewTransition'
+import FloatingToast from '../components/ui/FloatingToast'
 import StatePanel from '../components/ui/StatePanel'
 import {
   createAdminVehicle,
@@ -2151,19 +2152,17 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* ── Toast area ── */}
-        {(actionError || feedback) && !wizardOpen && (
+        <FloatingToast
+          message={feedback}
+          onDismiss={() => setFeedback('')}
+        />
+
+        {/* ── Error area ── */}
+        {actionError && !wizardOpen && (
           <div className="mx-auto max-w-7xl px-6 pt-5 space-y-2">
-            {actionError && (
-              <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-5 py-3.5 font-body text-sm text-[#b31a2b]">
-                {actionError}
-              </div>
-            )}
-            {feedback && !actionError && (
-              <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-5 py-3.5 font-body text-sm text-emerald-700">
-                {feedback}
-              </div>
-            )}
+            <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-5 py-3.5 font-body text-sm text-[#b31a2b]">
+              {actionError}
+            </div>
           </div>
         )}
 
@@ -2464,20 +2463,13 @@ export default function AdminDashboardPage() {
           <div className="mx-auto max-w-7xl px-6 py-12">
 
             {/* Toast inside wizard */}
-            {(actionError || feedback) && (
+            {actionError ? (
               <div className="mb-8 space-y-2">
-                {actionError && (
-                  <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-5 py-3.5 font-body text-sm text-[#b31a2b]">
-                    {actionError}
-                  </div>
-                )}
-                {feedback && !actionError && (
-                  <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-5 py-3.5 font-body text-sm text-emerald-700">
-                    {feedback}
-                  </div>
-                )}
+                <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-5 py-3.5 font-body text-sm text-[#b31a2b]">
+                  {actionError}
+                </div>
               </div>
-            )}
+            ) : null}
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-10 items-start">
 

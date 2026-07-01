@@ -23,10 +23,6 @@ vi.mock('./hooks/useIdleActivation', () => ({
   default: () => true,
 }))
 
-vi.mock('./components/ui/CustomCursor', () => ({
-  default: () => <div data-testid="custom-cursor">Cursor</div>,
-}))
-
 vi.mock('./components/ui/ChatWidget', () => ({
   default: () => <div data-testid="chat-widget">ChatWidget</div>,
 }))
@@ -130,9 +126,17 @@ describe('App critical routing', () => {
     expect(screen.getByTestId('navbar')).toBeInTheDocument()
     expect(screen.getByTestId('footer')).toBeInTheDocument()
     expect(screen.getByTestId('chat-widget')).toBeInTheDocument()
-    expect(screen.getByTestId('custom-cursor')).toBeInTheDocument()
     expect(screen.getByTestId('promo-campaign-modal')).toBeInTheDocument()
     expect(document.getElementById('main-content')).toBeInTheDocument()
+  })
+
+  it('keeps the promotional modal exclusive to the homepage', async () => {
+    window.history.pushState({}, '', '/inventario')
+
+    renderApp()
+
+    expect(await screen.findByText('Inventario Page')).toBeInTheDocument()
+    expect(screen.queryByTestId('promo-campaign-modal')).not.toBeInTheDocument()
   })
 
   it('redirects /login to /admin-login and removes public chrome', async () => {
@@ -148,7 +152,6 @@ describe('App critical routing', () => {
     expect(screen.queryByTestId('navbar')).not.toBeInTheDocument()
     expect(screen.queryByTestId('footer')).not.toBeInTheDocument()
     expect(screen.queryByTestId('chat-widget')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('custom-cursor')).not.toBeInTheDocument()
   })
 
   it('redirects legacy /dashboard to /admin', async () => {
