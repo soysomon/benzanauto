@@ -16,6 +16,7 @@ export const loadAdminResetPasswordPage = () => import('../pages/AdminResetPassw
 export const loadAdminUsersPage = () => import('../pages/AdminUsersPage')
 export const loadAdminAuditPage = () => import('../pages/AdminAuditPage')
 export const loadAdminSecurityPage = () => import('../pages/AdminSecurityPage')
+export const loadAdminCampaignsPage = () => import('../pages/AdminCampaignsPage')
 
 const routeModuleLoaders = new Map([
   ['/', loadHomePage],
@@ -31,6 +32,7 @@ const routeModuleLoaders = new Map([
   ['/admin/forgot-password', loadAdminForgotPasswordPage],
   ['/admin/reset-password', loadAdminResetPasswordPage],
   ['/admin', loadAdminDashboardPage],
+  ['/admin/campaigns', loadAdminCampaignsPage],
   ['/admin/users', loadAdminUsersPage],
   ['/admin/audit', loadAdminAuditPage],
   ['/admin/security', loadAdminSecurityPage],
@@ -45,6 +47,7 @@ function normalizeRoutePath(pathname = '/') {
   if (pathname.startsWith('/vehiculo/')) return '/vehiculo'
   if (pathname.startsWith('/admin/reset-password')) return '/admin/reset-password'
   if (pathname.startsWith('/admin/forgot-password')) return '/admin/forgot-password'
+  if (pathname.startsWith('/admin/campaigns')) return '/admin/campaigns'
   if (pathname.startsWith('/admin/users')) return '/admin/users'
   if (pathname.startsWith('/admin/audit')) return '/admin/audit'
   if (pathname.startsWith('/admin/security')) return '/admin/security'

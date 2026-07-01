@@ -5,6 +5,7 @@ import StatePanel from '../ui/StatePanel'
 
 const NAV_LINKS = [
   { to: '/admin', label: 'Dashboard', superadminOnly: false },
+  { to: '/admin/campaigns', label: 'Campañas', roles: ['superadmin', 'admin', 'editor'] },
   { to: '/admin/users', label: 'Usuarios', superadminOnly: true },
   { to: '/admin/audit', label: 'Auditoría', superadminOnly: true },
   { to: '/admin/security', label: 'Seguridad', superadminOnly: false },
@@ -103,6 +104,7 @@ export default function AdminPageShell({
         <div className="mx-auto max-w-7xl px-6 pb-4 flex flex-wrap gap-2">
           {NAV_LINKS
             .filter((item) => !item.superadminOnly || isSuperadmin)
+            .filter((item) => !item.roles || item.roles.includes(user.role))
             .map((item) => <AdminNavLink key={item.to} {...item} />)}
         </div>
       </header>

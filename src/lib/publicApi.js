@@ -4,11 +4,13 @@ import { mapApiVehicle, mapVehicleCollectionResponse } from './vehicleMapper'
 const PUBLIC_LIST_CACHE_TTL_MS = 30_000
 const PUBLIC_FEATURED_CACHE_TTL_MS = 60_000
 const PUBLIC_DETAIL_CACHE_TTL_MS = 60_000
+const PUBLIC_CAMPAIGN_CACHE_TTL_MS = 15_000
 const CACHE_STORAGE_PREFIX = 'benzan:public-api:v2'
 
 const publicVehicleListCache = new Map()
 const featuredVehicleCache = new Map()
 const publicVehicleDetailCache = new Map()
+const publicCampaignCache = new Map()
 const inFlightRequests = new Map()
 
 function buildCacheKey(params = {}) {
@@ -213,6 +215,56 @@ export async function getVehicleDetail(identifier, options = {}) {
         return setCachedValue(publicVehicleDetailCache, cacheKey, mapApiVehicle(response?.vehicle))
       } catch (error) {
         const fallbackResponse = getLastSuccessfulValue(publicVehicleDetailCache, cacheKey)
+        if (fallbackResponse && [429, 500, 502, 503, 504].includes(error?.status)) {
+          return fallbackResponse
+        }
+
+        throw error
+      }
+    },
+  })
+}
+
+function mapActiveCampaign(campaign) {
+  if (!campaign || typeof campaign !== 'object') return null
+
+  return {
+    id: campaign.id ?? campaign._id ?? null,
+    title: campaign.title ?? '',
+    description: campaign.description ?? '',
+    imageUrl: campaign.imageUrl ?? campaign.image?.url ?? '',
+    imageAlt: campaign.imageAlt ?? campaign.title ?? '',
+    ctaText: campaign.ctaText ?? '',
+    ctaUrl: campaign.ctaUrl ?? '',
+    delaySeconds: Number.isFinite(campaign.delaySeconds) ? campaign.delaySeconds : 3,
+    frequencyRule: campaign.frequencyRule ?? 'session',
+    displayType: campaign.displayType ?? 'modal',
+  }
+}
+
+export async function getActivePromotionalCampaign(params = {}, options = {}) {
+  const {
+    signal,
+    cacheTtlMs = PUBLIC_CAMPAIGN_CACHE_TTL_MS,
+    bypassCache = false,
+  } = options
+  const cacheKey = `campaign:${buildCacheKey(params)}`
+
+  return runCachedRequest({
+    store: publicCampaignCache,
+    key: cacheKey,
+    ttlMs: cacheTtlMs,
+    bypassCache,
+    requestFactory: async () => {
+      try {
+        const response = await apiRequest('/campaigns/active', {
+          searchParams: params,
+          signal,
+        })
+
+        return setCachedValue(publicCampaignCache, cacheKey, mapActiveCampaign(response?.campaign))
+      } catch (error) {
+        const fallbackResponse = getLastSuccessfulValue(publicCampaignCache, cacheKey)
         if (fallbackResponse && [429, 500, 502, 503, 504].includes(error?.status)) {
           return fallbackResponse
         }

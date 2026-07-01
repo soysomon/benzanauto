@@ -130,6 +130,64 @@ export function listAdminAuditLogs(token, params = {}) {
   })
 }
 
+export function listAdminCampaigns(token, params = {}) {
+  return apiRequest('/admin/campaigns', {
+    token,
+    searchParams: params,
+  })
+}
+
+export function getAdminCampaign(token, id) {
+  return apiRequest(`/admin/campaigns/${id}`, { token })
+}
+
+export function createAdminCampaign(token, payload) {
+  return apiRequest('/admin/campaigns', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}
+
+export function updateAdminCampaign(token, id, payload) {
+  return apiRequest(`/admin/campaigns/${id}`, {
+    method: 'PUT',
+    token,
+    body: payload,
+  })
+}
+
+export function updateAdminCampaignStatus(token, id, status) {
+  return apiRequest(`/admin/campaigns/${id}/status`, {
+    method: 'PATCH',
+    token,
+    body: { status },
+  })
+}
+
+export function uploadAdminCampaignImage(token, id, file, options = {}) {
+  const form = new FormData()
+  form.append('image', file)
+
+  if (options.imageAlt) {
+    form.append('imageAlt', options.imageAlt)
+  }
+
+  return apiUploadRequest(`/admin/campaigns/${id}/image`, {
+    method: 'POST',
+    token,
+    body: form,
+    onProgress: options.onProgress,
+  })
+}
+
+export function deleteAdminCampaignImage(token, id) {
+  return apiRequest(`/admin/campaigns/${id}/image`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
 export function listAdminVehicles(token, params = {}) {
   return apiRequest('/admin/vehicles', {
     token,

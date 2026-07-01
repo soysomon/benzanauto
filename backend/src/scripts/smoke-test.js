@@ -30,6 +30,7 @@ async function run() {
     { connectDatabase, disconnectDatabase },
     { createApp },
     { createInitialSuperAdmin },
+    { Campaign },
     { Vehicle },
     { clearSentEmailsForTesting, getSentEmailsForTesting },
   ] = await Promise.all([
@@ -37,6 +38,7 @@ async function run() {
     import('../config/database.js'),
     import('../app.js'),
     import('../services/auth.service.js'),
+    import('../models/Campaign.js'),
     import('../models/Vehicle.js'),
     import('../services/email.service.js'),
   ])
@@ -261,6 +263,61 @@ async function run() {
     assert.equal(publicListResponse.body.data.length, 1)
     assert.equal(publicListResponse.body.data[0].status, 'published')
     assert.equal(publicListResponse.body.data[0].condition, 'Nuevo')
+
+    const createCampaignResponse = await adminAgent
+      .post('/api/admin/campaigns')
+      .set(csrfHeaderName, csrfToken)
+      .send({
+        title: 'SUV Week',
+        description: 'Promoción especial para explorar el inventario SUV.',
+        ctaText: 'Ver inventario',
+        ctaUrl: '/inventario',
+        status: 'draft',
+        delaySeconds: 2,
+        frequencyRule: 'session',
+        priority: 300,
+        displayType: 'modal',
+        targetRoutes: ['/', '/inventario', '/vehiculo/*'],
+        targetDevices: ['desktop', 'mobile'],
+      })
+
+    assert.equal(createCampaignResponse.status, 201)
+    const campaignId = createCampaignResponse.body.campaign.id
+
+    const campaignImageResponse = await adminAgent
+      .post(`/api/admin/campaigns/${campaignId}/image`)
+      .set(csrfHeaderName, csrfToken)
+      .field('imageAlt', 'Semana SUV Benzan Auto')
+      .attach('image', imageBuffer, { filename: 'campaign.png', contentType: 'image/png' })
+
+    assert.equal(campaignImageResponse.status, 201)
+    assert.ok(campaignImageResponse.body.campaign.imageUrl)
+
+    const activateCampaignResponse = await adminAgent
+      .patch(`/api/admin/campaigns/${campaignId}/status`)
+      .set(csrfHeaderName, csrfToken)
+      .send({ status: 'active' })
+
+    assert.equal(activateCampaignResponse.status, 200)
+    assert.equal(activateCampaignResponse.body.campaign.status, 'active')
+
+    const storedCampaign = await Campaign.findById(campaignId).lean()
+    assert.ok(storedCampaign)
+    assert.equal(storedCampaign.status, 'active')
+    assert.ok(storedCampaign.image?.url)
+    assert.equal(storedCampaign.targetDevices.includes('desktop'), true)
+
+    const publicCampaignResponse = await request(app)
+      .get('/api/campaigns/active')
+      .query({
+        route: '/inventario',
+        device: 'desktop',
+      })
+
+    assert.equal(publicCampaignResponse.status, 200)
+    assert.equal(publicCampaignResponse.body.campaign.title, 'SUV Week')
+    assert.equal(publicCampaignResponse.body.campaign.ctaUrl, '/inventario')
+    assert.equal(publicCampaignResponse.body.campaign.status, undefined)
 
     const slug = publicListResponse.body.data[0].slug
 

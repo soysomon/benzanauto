@@ -11,6 +11,7 @@ import {
   loadAdminForgotPasswordPage,
   loadAdminLoginPage,
   loadAdminResetPasswordPage,
+  loadAdminCampaignsPage,
   loadAdminSecurityPage,
   loadAdminUsersPage,
   loadBarGrillPage,
@@ -28,6 +29,7 @@ import {
 
 const CustomCursor = lazy(loadCustomCursor)
 const ChatWidget = lazy(loadChatWidget)
+const PromotionalCampaignModal = lazy(() => import('./components/campaigns/PromotionalCampaignModal'))
 const Home = lazy(loadHomePage)
 const Inventario = lazy(loadInventarioPage)
 const VehiculoDetalle = lazy(loadVehiculoDetallePage)
@@ -41,6 +43,7 @@ const AdminLoginPage = lazy(loadAdminLoginPage)
 const AdminDashboardPage = lazy(loadAdminDashboardPage)
 const AdminForgotPasswordPage = lazy(loadAdminForgotPasswordPage)
 const AdminResetPasswordPage = lazy(loadAdminResetPasswordPage)
+const AdminCampaignsPage = lazy(loadAdminCampaignsPage)
 const AdminUsersPage = lazy(loadAdminUsersPage)
 const AdminAuditPage = lazy(loadAdminAuditPage)
 const AdminSecurityPage = lazy(loadAdminSecurityPage)
@@ -72,6 +75,7 @@ function AppRoutes() {
         <Route path="/admin/reset-password" element={<AdminResetPasswordPage />} />
         <Route path="/dashboard" element={<Navigate to="/admin" replace />} />
         <Route path="/admin" element={<AdminDashboardPage />} />
+        <Route path="/admin/campaigns" element={<AdminCampaignsPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/audit" element={<AdminAuditPage />} />
         <Route path="/admin/security" element={<AdminSecurityPage />} />
@@ -113,6 +117,11 @@ function RouteAwareChrome() {
       <main id="main-content" tabIndex={-1} className="min-h-screen focus:outline-none">
         <AppRoutes />
       </main>
+      {!isAdminRoute ? (
+        <Suspense fallback={null}>
+          <PromotionalCampaignModal />
+        </Suspense>
+      ) : null}
       {!isAdminRoute ? <Footer /> : null}
       {!isAdminRoute && deferredPublicChromeReady ? (
         <Suspense fallback={null}>

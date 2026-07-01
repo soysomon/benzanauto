@@ -31,6 +31,10 @@ vi.mock('./components/ui/ChatWidget', () => ({
   default: () => <div data-testid="chat-widget">ChatWidget</div>,
 }))
 
+vi.mock('./components/campaigns/PromotionalCampaignModal', () => ({
+  default: () => <div data-testid="promo-campaign-modal">PromoCampaignModal</div>,
+}))
+
 vi.mock('./pages/Home', () => ({
   default: () => <div>Home Page</div>,
 }))
@@ -95,6 +99,10 @@ vi.mock('./pages/AdminSecurityPage', () => ({
   default: () => <div>Admin Security Page</div>,
 }))
 
+vi.mock('./pages/AdminCampaignsPage', () => ({
+  default: () => <div>Admin Campaigns Page</div>,
+}))
+
 describe('App critical routing', () => {
   function renderApp() {
     return render(
@@ -123,6 +131,7 @@ describe('App critical routing', () => {
     expect(screen.getByTestId('footer')).toBeInTheDocument()
     expect(screen.getByTestId('chat-widget')).toBeInTheDocument()
     expect(screen.getByTestId('custom-cursor')).toBeInTheDocument()
+    expect(screen.getByTestId('promo-campaign-modal')).toBeInTheDocument()
     expect(document.getElementById('main-content')).toBeInTheDocument()
   })
 

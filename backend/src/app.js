@@ -8,11 +8,13 @@ import { notFoundHandler, errorHandler } from './middlewares/error.middleware.js
 import { requestContext } from './middlewares/request-context.middleware.js'
 import { apiRateLimiter, publicCatalogRateLimiter } from './middlewares/rate-limit.middleware.js'
 import chatRoutes from './routes/chat.routes.js'
+import publicCampaignRoutes from './routes/public/campaign.routes.js'
 import publicVehicleRoutes from './routes/public/vehicle.routes.js'
 import vehicleDataRoutes from './routes/public/vehicleData.routes.js'
 import adminAuthRoutes from './routes/admin/auth.routes.js'
 import adminUserRoutes from './routes/admin/user.routes.js'
 import adminAuditRoutes from './routes/admin/audit.routes.js'
+import adminCampaignRoutes from './routes/admin/campaign.routes.js'
 import adminVehicleRoutes from './routes/admin/vehicle.routes.js'
 import adminDashboardRoutes from './routes/admin/dashboard.routes.js'
 import { getDatabaseHealth } from './config/database.js'
@@ -118,11 +120,13 @@ export function createApp() {
 
   app.use('/api', apiRateLimiter)
   app.use('/api/chat', chatRoutes)
+  app.use('/api/campaigns', publicCatalogRateLimiter, publicCampaignRoutes)
   app.use('/api/vehicles', publicCatalogRateLimiter, publicVehicleRoutes)
   app.use('/api/vehicle-data', publicCatalogRateLimiter, vehicleDataRoutes)
   app.use('/api/admin/auth', adminAuthRoutes)
   app.use('/api/admin/users', adminUserRoutes)
   app.use('/api/admin/audit', adminAuditRoutes)
+  app.use('/api/admin/campaigns', adminCampaignRoutes)
   app.use('/api/admin/vehicles', adminVehicleRoutes)
   app.use('/api/admin/dashboard', adminDashboardRoutes)
 

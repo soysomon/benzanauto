@@ -18,7 +18,7 @@ function isPublicCatalogReadRequest(req) {
 
   if (!['GET', 'HEAD'].includes(method)) return false
 
-  return path.startsWith('/vehicles') || path.startsWith('/vehicle-data')
+  return path.startsWith('/vehicles') || path.startsWith('/vehicle-data') || path.startsWith('/campaigns')
 }
 
 export const apiRateLimiter = rateLimit({

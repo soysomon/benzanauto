@@ -3,6 +3,7 @@ export const ROLES = ['superadmin', 'admin', 'editor', 'viewer']
 export const ROLE_PERMISSIONS = Object.freeze({
   readAdmin: ['superadmin', 'admin', 'editor', 'viewer'],
   manageVehicles: ['superadmin', 'admin', 'editor'],
+  manageCampaigns: ['superadmin', 'admin', 'editor'],
   deleteVehicles: ['superadmin', 'admin'],
   manageLimitedUsers: ['superadmin', 'admin'],
   manageAllUsers: ['superadmin'],
@@ -27,4 +28,3 @@ export function canManageUser(actorRole, targetRole) {
   if (actorRole === 'admin') return ['editor', 'viewer'].includes(targetRole)
   return false
 }
-

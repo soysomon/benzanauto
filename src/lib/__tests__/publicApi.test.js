@@ -26,6 +26,21 @@ const sampleVehicleResponse = {
   },
 }
 
+const sampleCampaignResponse = {
+  campaign: {
+    id: 'cmp_1',
+    title: 'Semana SUV',
+    description: 'Campaña destacada para el inventario premium.',
+    imageUrl: 'https://cdn.example.com/campaign.webp',
+    imageAlt: 'Semana SUV Benzan',
+    ctaText: 'Ver SUVs',
+    ctaUrl: '/inventario',
+    delaySeconds: 4,
+    frequencyRule: 'session',
+    displayType: 'modal',
+  },
+}
+
 describe('publicApi caching', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -128,5 +143,47 @@ describe('publicApi caching', () => {
     expect(apiRequest).toHaveBeenCalledTimes(1)
     expect(firstVehicle.slug).toBe('toyota-prado-2026')
     expect(secondVehicle).toEqual(firstVehicle)
+  })
+
+  it('reuses cached active campaign responses for the same route and device context', async () => {
+    const apiRequest = vi.fn().mockResolvedValue(sampleCampaignResponse)
+    vi.doMock('../apiClient', () => ({ apiRequest }))
+
+    const { getActivePromotionalCampaign } = await import('../publicApi')
+    const params = { route: '/inventario', device: 'desktop' }
+
+    const firstCampaign = await getActivePromotionalCampaign(params)
+    const secondCampaign = await getActivePromotionalCampaign(params)
+
+    expect(apiRequest).toHaveBeenCalledTimes(1)
+    expect(firstCampaign).toEqual(secondCampaign)
+    expect(firstCampaign.title).toBe('Semana SUV')
+  })
+
+  it('falls back to the last successful campaign snapshot when the endpoint is rate limited', async () => {
+    const apiRequest = vi
+      .fn()
+      .mockResolvedValueOnce(sampleCampaignResponse)
+      .mockRejectedValueOnce({ status: 429, message: 'Too many requests' })
+
+    vi.doMock('../apiClient', () => ({ apiRequest }))
+
+    const { getActivePromotionalCampaign } = await import('../publicApi')
+    const params = { route: '/inventario', device: 'desktop' }
+
+    const firstCampaign = await getActivePromotionalCampaign(params, {
+      cacheTtlMs: 1,
+    })
+
+    vi.advanceTimersByTime(5)
+    vi.setSystemTime(new Date('2026-06-28T10:00:00.010Z'))
+
+    const fallbackCampaign = await getActivePromotionalCampaign(params, {
+      cacheTtlMs: 1,
+    })
+
+    expect(apiRequest).toHaveBeenCalledTimes(2)
+    expect(fallbackCampaign).toEqual(firstCampaign)
+    expect(fallbackCampaign.ctaUrl).toBe('/inventario')
   })
 })
