@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AdminAuthLayout from '../components/admin/AdminAuthLayout'
 import { getAdminMe, loginAdmin } from '../lib/adminApi'
-import { COOKIE_SESSION_TOKEN, getStoredAdminToken, setStoredAdminSession } from '../lib/adminSession'
+import {
+  clearStoredAdminToken,
+  COOKIE_SESSION_TOKEN,
+  getStoredAdminToken,
+  isCookieBackedAdminSessionToken,
+  setStoredAdminSession,
+} from '../lib/adminSession'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
@@ -18,22 +24,25 @@ export default function AdminLoginPage() {
     async function resolveExistingSession() {
       const storedToken = getStoredAdminToken()
 
-      if (storedToken) {
+      if (storedToken && !isCookieBackedAdminSessionToken(storedToken)) {
         navigate('/admin', { replace: true })
         return
       }
 
       try {
-        const response = await getAdminMe()
+        const response = await getAdminMe(storedToken || undefined)
         if (ignore) return
 
-        setStoredAdminSession(COOKIE_SESSION_TOKEN, response.user, {
+        setStoredAdminSession(storedToken || COOKIE_SESSION_TOKEN, response.user, {
           csrfToken: response.csrfToken ?? '',
           cookieBacked: true,
         })
-        navigate('/admin', { replace: true })
+        navigate(
+          response.user?.mustChangePassword ? '/admin/security?reason=must-change-password' : '/admin',
+          { replace: true },
+        )
       } catch {
-        // noop: login page should stay visible if there is no active session
+        clearStoredAdminToken()
       }
     }
 
@@ -51,12 +60,21 @@ export default function AdminLoginPage() {
       setError('')
       setMessage('')
       const response = await loginAdmin(form)
-      setStoredAdminSession(COOKIE_SESSION_TOKEN, response.user, {
-        csrfToken: response.csrfToken ?? '',
+      const activeSession = await getAdminMe(COOKIE_SESSION_TOKEN).catch(() => null)
+
+      if (!activeSession?.user) {
+        clearStoredAdminToken()
+        throw new Error(
+          'No pudimos activar la sesión en este navegador. Si estás en incógnito o bloqueas cookies de terceros, permite las cookies para Railway o usa una ventana normal.',
+        )
+      }
+
+      setStoredAdminSession(COOKIE_SESSION_TOKEN, activeSession.user, {
+        csrfToken: activeSession.csrfToken ?? response.csrfToken ?? '',
         cookieBacked: true,
       })
       navigate(
-        response.user?.mustChangePassword ? '/admin/security?reason=must-change-password' : '/admin',
+        activeSession.user?.mustChangePassword ? '/admin/security?reason=must-change-password' : '/admin',
         { replace: true },
       )
     } catch (submitError) {
