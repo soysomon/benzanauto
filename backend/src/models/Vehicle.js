@@ -265,4 +265,43 @@ vehicleSchema.index({
   price: 1,
 })
 
+vehicleSchema.index(
+  {
+    status: 1,
+    publishedAt: -1,
+    createdAt: -1,
+  },
+  {
+    name: 'vehicle_public_recent_idx',
+    partialFilterExpression: { status: 'published' },
+  },
+)
+
+vehicleSchema.index(
+  {
+    status: 1,
+    featured: -1,
+    publishedAt: -1,
+    createdAt: -1,
+  },
+  {
+    name: 'vehicle_public_featured_recent_idx',
+    partialFilterExpression: { status: 'published' },
+  },
+)
+
+vehicleSchema.index(
+  {
+    status: 1,
+    brand: 1,
+    featured: -1,
+    publishedAt: -1,
+    createdAt: -1,
+  },
+  {
+    name: 'vehicle_public_brand_recent_idx',
+    partialFilterExpression: { status: 'published' },
+  },
+)
+
 export const Vehicle = mongoose.models.Vehicle || mongoose.model('Vehicle', vehicleSchema)

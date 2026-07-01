@@ -41,6 +41,8 @@ function hasValue(value) {
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  LOG_SERVICE_NAME: z.string().optional().default('benzan-auto-backend'),
   PORT: parseInteger(4000).default(4000),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI es obligatorio.'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET debe tener al menos 32 caracteres.'),
@@ -95,9 +97,18 @@ const envSchema = z.object({
   SMTP_HOST: z.string().optional().default(''),
   SMTP_PORT: parseInteger(587).default(587),
   SMTP_SECURE: parseBoolean(false).default(false),
+  SMTP_REQUIRE_TLS: parseBoolean(false).default(false),
+  SMTP_POOL: parseBoolean(true).default(true),
+  SMTP_CONNECTION_TIMEOUT_MS: parseInteger(10_000).default(10_000),
+  SMTP_GREETING_TIMEOUT_MS: parseInteger(10_000).default(10_000),
+  SMTP_SOCKET_TIMEOUT_MS: parseInteger(20_000).default(20_000),
+  SMTP_TLS_SERVERNAME: z.string().optional().default(''),
+  SMTP_VERIFY_ON_STARTUP: parseBoolean(true).default(true),
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASS: z.string().optional().default(''),
   EMAIL_FROM: z.string().optional().default(''),
+  EMAIL_FROM_NAME: z.string().optional().default('Benzan Auto Admin'),
+  EMAIL_REPLY_TO: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
   GROQ_API_KEY: z.string().optional().default(''),
   AI_TIMEOUT_MS: parseInteger(12_000).default(12_000),
@@ -155,6 +166,22 @@ const envSchema = z.object({
         message,
       })
     }
+  }
+
+  if (config.SMTP_SECURE && config.SMTP_PORT === 587) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SMTP_PORT'],
+      message: 'SMTP_PORT normalmente debe ser 465 cuando SMTP_SECURE=true.',
+    })
+  }
+
+  if (!config.SMTP_SECURE && config.SMTP_PORT === 465) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SMTP_SECURE'],
+      message: 'SMTP_SECURE normalmente debe ser true cuando SMTP_PORT=465.',
+    })
   }
 })
 

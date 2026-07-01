@@ -26,18 +26,21 @@ async function run() {
   process.env.SUPERADMIN_PASSWORD = smokePassword
 
   const [
+    { logger },
     { connectDatabase, disconnectDatabase },
     { createApp },
     { createInitialSuperAdmin },
     { Vehicle },
     { clearSentEmailsForTesting, getSentEmailsForTesting },
   ] = await Promise.all([
+    import('../utils/logger.js'),
     import('../config/database.js'),
     import('../app.js'),
     import('../services/auth.service.js'),
     import('../models/Vehicle.js'),
     import('../services/email.service.js'),
   ])
+  const smokeLogger = logger.child({ scope: 'script:smoke-test' })
 
   try {
     await connectDatabase()
@@ -59,7 +62,7 @@ async function run() {
       })
 
     assert.equal(loginResponse.status, 200)
-    assert.ok(loginResponse.body.token)
+    assert.equal(loginResponse.body.token, undefined)
     assert.ok(loginResponse.body.csrfToken)
     assert.ok(
       loginResponse.headers['set-cookie']?.some((header) => header.startsWith('benzan_admin_session=')),
@@ -133,6 +136,7 @@ async function run() {
       })
 
     assert.equal(managedLoginResponse.status, 200)
+    assert.equal(managedLoginResponse.body.token, undefined)
     assert.equal(managedLoginResponse.body.user.role, 'editor')
 
     const auditLogResponse = await adminAgent
@@ -312,7 +316,7 @@ async function run() {
     const meAfterLogoutResponse = await adminAgent.get('/api/admin/auth/me')
     assert.equal(meAfterLogoutResponse.status, 401)
 
-    console.log('Smoke test passed.')
+    smokeLogger.info('smoke_test_passed')
   } finally {
     await disconnectDatabase().catch(() => {})
     await mongo.stop().catch(() => {})
@@ -320,6 +324,17 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error('[Smoke Test Error]', error)
+  process.stderr.write(`${JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: 'error',
+    service: 'benzan-auto-backend',
+    scope: 'script:smoke-test',
+    message: 'smoke_test_failed',
+    error: {
+      name: error?.name ?? 'Error',
+      message: error?.message ?? 'Unknown smoke test failure.',
+      stack: error?.stack ?? null,
+    },
+  })}\n`)
   process.exit(1)
 })

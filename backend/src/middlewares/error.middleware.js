@@ -3,6 +3,9 @@ import multer from 'multer'
 import { ZodError } from 'zod'
 import { ApiError, validationError } from '../utils/api-error.js'
 import { isProduction } from '../config/env.js'
+import { logger } from '../utils/logger.js'
+
+const errorLogger = logger.child({ scope: 'error-handler' })
 
 export function notFoundHandler(_req, _res, next) {
   next(new ApiError(404, 'NOT_FOUND', 'Ruta no encontrada.'))
@@ -10,6 +13,15 @@ export function notFoundHandler(_req, _res, next) {
 
 export function errorHandler(err, req, res, _next) {
   if (err instanceof ApiError) {
+    if (err.statusCode >= 500) {
+      errorLogger.error('api_error_response', {
+        code: err.code,
+        statusCode: err.statusCode,
+        message: err.message,
+        details: err.details,
+      })
+    }
+
     return res.status(err.statusCode).json({
       error: {
         code: err.code,
@@ -24,15 +36,22 @@ export function errorHandler(err, req, res, _next) {
     const fieldErrors = err.flatten().fieldErrors
     const normalized = validationError(fieldErrors)
 
-    if (!isProduction() && req.originalUrl.startsWith('/api/admin/vehicles')) {
-      console.error('[Zod Validation Debug]', {
-        method: req.method,
-        path: req.originalUrl,
+    errorLogger.warn('request_validation_failed', {
+      code: normalized.code,
+      method: req.method,
+      path: req.originalUrl,
+      fieldErrors,
+      issues: err.issues.map((issue) => ({
+        path: issue.path,
+        code: issue.code,
+        message: issue.message,
+      })),
+      request: {
+        params: req.params,
+        query: req.query,
         body: req.body,
-        fieldErrors,
-        issues: err.issues,
-      })
-    }
+      },
+    })
 
     return res.status(normalized.statusCode).json({
       error: {
@@ -45,6 +64,13 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (err instanceof multer.MulterError) {
+    errorLogger.warn('upload_validation_failed', {
+      code: err.code,
+      field: err.field,
+      method: req.method,
+      path: req.originalUrl,
+    })
+
     return res.status(400).json({
       error: {
         code: 'UPLOAD_ERROR',
@@ -59,6 +85,17 @@ export function errorHandler(err, req, res, _next) {
       Object.entries(err.errors).map(([field, value]) => [field, [value.message]]),
     )
 
+    errorLogger.warn('mongoose_validation_failed', {
+      method: req.method,
+      path: req.originalUrl,
+      fieldErrors,
+      request: {
+        params: req.params,
+        query: req.query,
+        body: req.body,
+      },
+    })
+
     return res.status(422).json({
       error: {
         code: 'VALIDATION_ERROR',
@@ -70,6 +107,14 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (err instanceof mongoose.Error.CastError) {
+    errorLogger.warn('mongoose_cast_error', {
+      method: req.method,
+      path: req.originalUrl,
+      value: err.value,
+      kind: err.kind,
+      pathName: err.path,
+    })
+
     return res.status(400).json({
       error: {
         code: 'INVALID_ID',
@@ -80,6 +125,13 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (err?.code === 11000) {
+    errorLogger.warn('duplicate_key_rejected', {
+      method: req.method,
+      path: req.originalUrl,
+      keyPattern: err.keyPattern ?? {},
+      keyValue: err.keyValue ?? {},
+    })
+
     return res.status(409).json({
       error: {
         code: 'DUPLICATE_KEY',
@@ -93,6 +145,14 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (err?.type === 'entity.too.large') {
+    errorLogger.warn('request_payload_too_large', {
+      method: req.method,
+      path: req.originalUrl,
+      limit: err.limit,
+      length: err.length,
+      received: err.received,
+    })
+
     return res.status(413).json({
       error: {
         code: 'PAYLOAD_TOO_LARGE',
@@ -103,6 +163,12 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (err instanceof SyntaxError && 'body' in err) {
+    errorLogger.warn('invalid_json_body', {
+      method: req.method,
+      path: req.originalUrl,
+      message: err.message,
+    })
+
     return res.status(400).json({
       error: {
         code: 'INVALID_JSON',
@@ -112,7 +178,16 @@ export function errorHandler(err, req, res, _next) {
     })
   }
 
-  console.error('[Unhandled Server Error]', err)
+  errorLogger.error('unhandled_server_error', {
+    error: err,
+    method: req.method,
+    path: req.originalUrl,
+    request: {
+      params: req.params,
+      query: req.query,
+      body: req.body,
+    },
+  })
 
   return res.status(500).json({
     error: {

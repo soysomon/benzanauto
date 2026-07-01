@@ -6,7 +6,9 @@ Establecer un gate operativo antes de cualquier despliegue para que el portal ma
 ## Regla de oro
 No desplegar si falla cualquiera de estas condiciones:
 - `npm run verify:ci`
+- `npm run test:e2e:ci`
 - workflow `Quality Gate` en GitHub Actions
+- workflow `UI Smoke` en GitHub Actions
 - checklist manual crítica
 - revisión de variables del entorno objetivo
 
@@ -14,6 +16,7 @@ No desplegar si falla cualquiera de estas condiciones:
 - Confirmar que el trabajo sale desde una rama controlada y no desde cambios locales sin commit.
 - Confirmar que `main` no se tocó manualmente en producción.
 - Confirmar backup reciente o snapshot disponible de MongoDB Atlas si el release toca datos, modelos o índices.
+- Si el release agrega o cambia índices, correr `npm --prefix backend run indexes:diff` antes del deploy y planificar `npm --prefix backend run indexes:sync` en la ventana controlada.
 - Confirmar que frontend y backend de Railway siguen apuntando a las variables públicas correctas.
 - Confirmar que el dominio temporal o final sigue saliendo de variables, nunca hardcodeado.
 
@@ -23,10 +26,12 @@ No desplegar si falla cualquiera de estas condiciones:
 - Ejecutar `npm run verify:frontend`.
 - Ejecutar `npm run verify:backend`.
 - Ejecutar `npm run verify:security`.
+- Ejecutar `npm run test:e2e:ci`.
 - Validar que GitHub Actions complete:
   - `frontend-quality`
   - `backend-quality`
   - `dependency-audit`
+  - `UI Smoke`
   - `dependency-review` en PRs
 
 ## 3. QA manual crítica - Público

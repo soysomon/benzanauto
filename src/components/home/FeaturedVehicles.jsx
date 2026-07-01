@@ -3,15 +3,27 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { getFeaturedVehicles, listPublicVehicles } from '../../lib/publicApi'
 import StatePanel from '../ui/StatePanel'
+import { prefetchRoute, prefetchVehicleDetailRoute } from '../../lib/routeModules'
 
-function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
+function VehicleCell({
+  vehicle,
+  size = 'sm',
+  index = 0,
+  loading = 'lazy',
+  fetchPriority = 'auto',
+}) {
   const navigate = useNavigate()
+  const detailPath = `/vehiculo/${vehicle.slug ?? vehicle.legacyId ?? vehicle.id}`
   const titleSize =
     size === 'hero'
       ? 'text-[clamp(32px,4vw,56px)]'
       : size === 'md'
-        ? 'text-[clamp(24px,2.5vw,38px)]'
-        : 'text-[clamp(20px,1.8vw,28px)]'
+      ? 'text-[clamp(24px,2.5vw,38px)]'
+      : 'text-[clamp(20px,1.8vw,28px)]'
+
+  const ensurePrefetch = () => {
+    void prefetchVehicleDetailRoute(vehicle.slug ?? vehicle.legacyId ?? vehicle.id)
+  }
 
   return (
     <motion.div
@@ -19,12 +31,17 @@ function VehicleCell({ vehicle, size = 'sm', index = 0 }) {
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 0.7, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-      onClick={() => navigate(`/vehiculo/${vehicle.slug ?? vehicle.legacyId ?? vehicle.id}`)}
+      onClick={() => navigate(detailPath)}
+      onMouseEnter={ensurePrefetch}
+      onFocus={ensurePrefetch}
       className="relative w-full h-full overflow-hidden cursor-pointer group"
     >
       <img
         src={vehicle.image}
         alt={`${vehicle.brand} ${vehicle.model}`}
+        loading={loading}
+        fetchPriority={fetchPriority}
+        decoding="async"
         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
       />
 
@@ -117,13 +134,13 @@ export default function FeaturedVehicles() {
     setActiveTab(tab.id)
 
     if (tab.id === null) {
-      window.location.href = '/inventario'
+      navigate('/inventario')
       return
     }
 
     const selectedVehicle = showcase.find((vehicle) => (vehicle.slug ?? vehicle.id) === tab.id)
     if (selectedVehicle) {
-      window.location.href = `/vehiculo/${selectedVehicle.slug ?? selectedVehicle.legacyId ?? selectedVehicle.id}`
+      navigate(`/vehiculo/${selectedVehicle.slug ?? selectedVehicle.legacyId ?? selectedVehicle.id}`)
     }
   }
 
@@ -160,7 +177,7 @@ export default function FeaturedVehicles() {
             title="Destacados no disponibles"
             message={error}
             actionLabel="Ver inventario"
-            onAction={() => { window.location.href = '/inventario' }}
+            onAction={() => { navigate('/inventario') }}
           />
         </div>
       </section>
@@ -180,6 +197,8 @@ export default function FeaturedVehicles() {
         </div>
         <Link
           to="/inventario"
+          onMouseEnter={() => { void prefetchRoute('/inventario') }}
+          onFocus={() => { void prefetchRoute('/inventario') }}
           className="font-body text-xs text-neutral-500 hover:text-neutral-900 uppercase tracking-widest transition-colors duration-200 flex items-center gap-1.5 group"
         >
           Ver todo
@@ -193,7 +212,7 @@ export default function FeaturedVehicles() {
         <>
           <div className="hidden lg:grid w-full" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '340px 260px', gap: '2px' }}>
             <div style={{ gridColumn: '1', gridRow: '1 / 3' }}>
-              <VehicleCell vehicle={showcase[0]} size="hero" index={0} />
+              <VehicleCell vehicle={showcase[0]} size="hero" index={0} loading="eager" fetchPriority="high" />
             </div>
             <div style={{ gridColumn: '2', gridRow: '1' }}>
               <VehicleCell vehicle={showcase[1]} size="md" index={1} />
@@ -207,7 +226,13 @@ export default function FeaturedVehicles() {
           <div className="lg:hidden grid grid-cols-2 gap-0.5">
             {showcase.map((vehicle, index) => (
               <div key={vehicle.slug ?? vehicle.id} className={`relative ${index === 0 ? 'col-span-2 h-64' : 'h-48'}`}>
-                <VehicleCell vehicle={vehicle} size={index === 0 ? 'md' : 'sm'} index={index} />
+                <VehicleCell
+                  vehicle={vehicle}
+                  size={index === 0 ? 'md' : 'sm'}
+                  index={index}
+                  loading={index === 0 ? 'eager' : 'lazy'}
+                  fetchPriority={index === 0 ? 'high' : 'auto'}
+                />
               </div>
             ))}
           </div>
@@ -216,7 +241,13 @@ export default function FeaturedVehicles() {
         <div className="container-pad grid grid-cols-1 md:grid-cols-2 gap-3 pb-12">
           {showcase.map((vehicle, index) => (
             <div key={vehicle.slug ?? vehicle.id} className="h-64">
-              <VehicleCell vehicle={vehicle} size={index === 0 ? 'md' : 'sm'} index={index} />
+              <VehicleCell
+                vehicle={vehicle}
+                size={index === 0 ? 'md' : 'sm'}
+                index={index}
+                loading={index === 0 ? 'eager' : 'lazy'}
+                fetchPriority={index === 0 ? 'high' : 'auto'}
+              />
             </div>
           ))}
         </div>

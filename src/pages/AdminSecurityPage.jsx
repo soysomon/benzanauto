@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import AdminPageShell from '../components/admin/AdminPageShell'
 import { useAdminPageSession } from '../hooks/useAdminPageSession'
 import { changeAdminPassword } from '../lib/adminApi'
+import { COOKIE_SESSION_TOKEN } from '../lib/adminSession'
 
 export default function AdminSecurityPage() {
   const navigate = useNavigate()
@@ -40,7 +41,7 @@ export default function AdminSecurityPage() {
         confirmPassword: form.confirmPassword,
       })
 
-      sessionState.syncSession(response.token, response.user, response.session ?? null, {
+      sessionState.syncSession(COOKIE_SESSION_TOKEN, response.user, response.session ?? null, {
         csrfToken: response.csrfToken ?? '',
         cookieBacked: true,
       })
@@ -76,12 +77,12 @@ export default function AdminSecurityPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_360px]">
         <section className="rounded-[32px] bg-white p-8 shadow-sm">
           {mustRotatePassword ? (
-            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 font-body text-sm text-amber-800">
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 font-body text-sm text-amber-800" role="status" aria-live="polite">
               Esta cuenta está marcada para cambiar su contraseña antes de seguir operando con normalidad.
             </div>
           ) : null}
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-5" onSubmit={handleSubmit} aria-busy={loading}>
             <div>
               <label className="block font-body text-sm text-[#666] mb-2.5" htmlFor="security-current-password">
                 Contraseña actual
@@ -93,6 +94,8 @@ export default function AdminSecurityPage() {
                 onChange={(event) => setForm((current) => ({ ...current, currentPassword: event.target.value }))}
                 className="w-full rounded-2xl border border-transparent bg-[#F5F5F5] px-4 py-3.5 font-body text-sm text-[#0A0A0A] focus:border-[#D8D8D8] focus:bg-white focus:outline-none"
                 autoComplete="current-password"
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'admin-security-feedback' : undefined}
                 required
               />
             </div>
@@ -108,6 +111,8 @@ export default function AdminSecurityPage() {
                 onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))}
                 className="w-full rounded-2xl border border-transparent bg-[#F5F5F5] px-4 py-3.5 font-body text-sm text-[#0A0A0A] focus:border-[#D8D8D8] focus:bg-white focus:outline-none"
                 autoComplete="new-password"
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'admin-security-feedback' : undefined}
                 required
               />
             </div>
@@ -123,18 +128,20 @@ export default function AdminSecurityPage() {
                 onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
                 className="w-full rounded-2xl border border-transparent bg-[#F5F5F5] px-4 py-3.5 font-body text-sm text-[#0A0A0A] focus:border-[#D8D8D8] focus:bg-white focus:outline-none"
                 autoComplete="new-password"
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'admin-security-feedback' : undefined}
                 required
               />
             </div>
 
             {error ? (
-              <div className="rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-4 py-3.5 font-body text-sm text-[#b31a2b]">
+              <div id="admin-security-feedback" className="rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-4 py-3.5 font-body text-sm text-[#b31a2b]" role="alert">
                 {error}
               </div>
             ) : null}
 
             {success ? (
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 font-body text-sm text-emerald-800">
+              <div id="admin-security-feedback" className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 font-body text-sm text-emerald-800" role="status" aria-live="polite">
                 {success}
               </div>
             ) : null}

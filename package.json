@@ -8,6 +8,7 @@
     "dev:app": "vite",
     "dev:api": "npm --prefix backend run dev",
     "generate:seo": "node scripts/generate-seo-assets.mjs",
+    "inspect:frontend-build": "node scripts/inspect-frontend-build.mjs",
     "build:frontend": "vite build",
     "postbuild:frontend": "npm run generate:seo",
     "build": "npm run build:frontend",
@@ -15,6 +16,8 @@
     "smoke:backend": "npm --prefix backend run smoke",
     "test:frontend": "vitest",
     "test:frontend:ci": "vitest run --reporter=dot",
+    "test:e2e": "npm run build:frontend && playwright test",
+    "test:e2e:ci": "npm run build:frontend && playwright test --project=chromium",
     "audit:frontend": "npm audit --omit=dev",
     "audit:backend": "npm --prefix backend audit --omit=dev",
     "verify:frontend": "npm run build:frontend && npm run test:frontend:ci",
@@ -31,8 +34,10 @@
     "react-router-dom": "^6.30.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
+    "@types/node": "^26.0.1",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
     "concurrently": "^9.2.1",

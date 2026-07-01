@@ -51,7 +51,7 @@ export default function AdminLoginPage() {
       setError('')
       setMessage('')
       const response = await loginAdmin(form)
-      setStoredAdminSession(response.token, response.user, {
+      setStoredAdminSession(COOKIE_SESSION_TOKEN, response.user, {
         csrfToken: response.csrfToken ?? '',
         cookieBacked: true,
       })
@@ -82,7 +82,7 @@ export default function AdminLoginPage() {
         </div>
       )}
     >
-      <form className="space-y-5" onSubmit={handleSubmit}>
+      <form className="space-y-5" onSubmit={handleSubmit} aria-busy={loading}>
         <div>
           <label
             className="block font-body text-sm text-[#666] mb-2.5"
@@ -98,6 +98,8 @@ export default function AdminLoginPage() {
             className="w-full bg-[#F5F5F5] border border-transparent rounded-2xl px-4 py-3.5 text-sm text-[#0A0A0A] placeholder:text-[#C8C8C8] focus:outline-none focus:bg-white focus:border-[#D8D8D8] transition-all duration-200"
             placeholder="superadmin o admin@empresa.com"
             autoComplete="username"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'admin-login-feedback' : undefined}
             required
           />
         </div>
@@ -117,18 +119,20 @@ export default function AdminLoginPage() {
             className="w-full bg-[#F5F5F5] border border-transparent rounded-2xl px-4 py-3.5 text-sm text-[#0A0A0A] placeholder:text-[#C8C8C8] focus:outline-none focus:bg-white focus:border-[#D8D8D8] transition-all duration-200"
             placeholder="••••••••"
             autoComplete="current-password"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'admin-login-feedback' : undefined}
             required
           />
         </div>
 
         {message ? (
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 font-body text-sm text-emerald-800">
+          <div id="admin-login-feedback" className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 font-body text-sm text-emerald-800" role="status" aria-live="polite">
             {message}
           </div>
         ) : null}
 
         {error ? (
-          <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-4 py-3.5 font-body text-sm text-[#b31a2b]">
+          <div id="admin-login-feedback" className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-4 py-3.5 font-body text-sm text-[#b31a2b]" role="alert">
             {error}
           </div>
         ) : null}

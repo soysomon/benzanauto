@@ -31,12 +31,13 @@ export default function AdminPageShell({
   requireSuperadmin = false,
 }) {
   const { user, loading, error, logout, isSuperadmin } = sessionState
+  const headingId = 'admin-page-heading'
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F7F7F7] flex items-center justify-center">
+      <div className="min-h-screen bg-[#F7F7F7] flex items-center justify-center" role="status" aria-live="polite" aria-busy="true">
         <div className="text-center">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[#E5E5E5] border-t-[#0A0A0A] animate-spin" />
+          <div aria-hidden="true" className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[#E5E5E5] border-t-[#0A0A0A] animate-spin" />
           <p className="font-body text-sm text-[#777] mt-4">Verificando sesión administrativa...</p>
         </div>
       </div>
@@ -55,6 +56,8 @@ export default function AdminPageShell({
             actionLabel="Volver al dashboard"
             onAction={() => window.location.assign('/admin')}
             className="py-20"
+            role="alert"
+            announcementMode="assertive"
           />
         </div>
       </div>
@@ -69,7 +72,7 @@ export default function AdminPageShell({
             <p className="font-body text-[11px] uppercase tracking-[0.28em] text-[#C5C5C5] mb-2">
               Panel seguro · {user.role}
             </p>
-            <h1 className="font-heading text-[28px] tracking-tight text-[#0A0A0A]">
+            <h1 id={headingId} className="font-heading text-[28px] tracking-tight text-[#0A0A0A]">
               {title}
             </h1>
             {description ? (
@@ -98,14 +101,14 @@ export default function AdminPageShell({
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8 space-y-6">
+      <section className="mx-auto max-w-7xl space-y-6 px-6 py-8" aria-labelledby={headingId}>
         {error ? (
-          <div className="rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-5 py-4 font-body text-sm text-[#b31a2b]">
+          <div className="rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-5 py-4 font-body text-sm text-[#b31a2b]" role="alert">
             {error}
           </div>
         ) : null}
         {children}
-      </main>
+      </section>
     </div>
   )
 }

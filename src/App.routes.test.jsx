@@ -5,6 +5,7 @@ import App from './App.jsx'
 
 vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }) => <>{children}</>,
+  useReducedMotion: () => false,
   motion: {
     div: ({ children }) => <div>{children}</div>,
   },
@@ -16,6 +17,10 @@ vi.mock('./components/layout/Navbar', () => ({
 
 vi.mock('./components/layout/Footer', () => ({
   default: () => <div data-testid="footer">Footer</div>,
+}))
+
+vi.mock('./hooks/useIdleActivation', () => ({
+  default: () => true,
 }))
 
 vi.mock('./components/ui/CustomCursor', () => ({
@@ -56,6 +61,10 @@ vi.mock('./pages/Nosotros', () => ({
 
 vi.mock('./pages/Contacto', () => ({
   default: () => <div>Contacto Page</div>,
+}))
+
+vi.mock('./pages/NotFoundPage', () => ({
+  default: () => <div>Not Found Page</div>,
 }))
 
 vi.mock('./pages/AdminLoginPage', () => ({
@@ -103,16 +112,18 @@ describe('App critical routing', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders public chrome on public routes', () => {
+  it('renders public chrome on public routes', async () => {
     window.history.pushState({}, '', '/')
 
     renderApp()
 
-    expect(screen.getByText('Home Page')).toBeInTheDocument()
+    expect(await screen.findByText('Home Page')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /saltar al contenido principal/i })).toBeInTheDocument()
     expect(screen.getByTestId('navbar')).toBeInTheDocument()
     expect(screen.getByTestId('footer')).toBeInTheDocument()
     expect(screen.getByTestId('chat-widget')).toBeInTheDocument()
     expect(screen.getByTestId('custom-cursor')).toBeInTheDocument()
+    expect(document.getElementById('main-content')).toBeInTheDocument()
   })
 
   it('redirects /login to /admin-login and removes public chrome', async () => {
@@ -124,7 +135,7 @@ describe('App critical routing', () => {
       expect(window.location.pathname).toBe('/admin-login')
     })
 
-    expect(screen.getByText('Admin Login Page')).toBeInTheDocument()
+    expect(await screen.findByText('Admin Login Page')).toBeInTheDocument()
     expect(screen.queryByTestId('navbar')).not.toBeInTheDocument()
     expect(screen.queryByTestId('footer')).not.toBeInTheDocument()
     expect(screen.queryByTestId('chat-widget')).not.toBeInTheDocument()
@@ -140,8 +151,18 @@ describe('App critical routing', () => {
       expect(window.location.pathname).toBe('/admin')
     })
 
-    expect(screen.getByText('Admin Dashboard Page')).toBeInTheDocument()
+    expect(await screen.findByText('Admin Dashboard Page')).toBeInTheDocument()
     expect(screen.queryByTestId('navbar')).not.toBeInTheDocument()
     expect(screen.queryByTestId('footer')).not.toBeInTheDocument()
+  })
+
+  it('renders a controlled 404 route instead of leaving the screen blank', async () => {
+    window.history.pushState({}, '', '/ruta-inexistente')
+
+    renderApp()
+
+    expect(await screen.findByText('Not Found Page')).toBeInTheDocument()
+    expect(screen.getByTestId('navbar')).toBeInTheDocument()
+    expect(screen.getByTestId('footer')).toBeInTheDocument()
   })
 })

@@ -7,6 +7,31 @@ import { shouldCountVehicleView } from '../utils/view-tracker.js'
 import { invalidatePublishedChatInventoryCache } from './chatInventory.service.js'
 import { normalizeImageOrdering, removeAllVehicleImages, syncVehicleMainImage } from './image.service.js'
 
+const PUBLIC_VEHICLE_SUMMARY_PROJECTION = Object.freeze({
+  _id: 1,
+  legacyId: 1,
+  slug: 1,
+  title: 1,
+  brand: 1,
+  model: 1,
+  year: 1,
+  price: 1,
+  currency: 1,
+  mileage: 1,
+  transmission: 1,
+  fuelType: 1,
+  bodyType: 1,
+  drivetrain: 1,
+  color: 1,
+  condition: 1,
+  status: 1,
+  featured: 1,
+  badge: 1,
+  mainImage: 1,
+  images: 1,
+  publishedAt: 1,
+})
+
 export async function listPublicVehicles(query) {
   const normalized = normalizePublicQuery(query)
   const { page, limit, skip } = getPagination(normalized, { defaultLimit: 12, maxLimit: 60 })
@@ -14,13 +39,13 @@ export async function listPublicVehicles(query) {
   const sort = buildSort(normalized.sort)
 
   const [vehicles, total, facets] = await Promise.all([
-    Vehicle.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+    Vehicle.find(filter, PUBLIC_VEHICLE_SUMMARY_PROJECTION).sort(sort).skip(skip).limit(limit).lean(),
     Vehicle.countDocuments(filter),
     buildPublicFacets(filter),
   ])
 
   return {
-    data: vehicles.map((vehicle) => serializePublicVehicle(vehicle)),
+    data: vehicles.map((vehicle) => serializePublicVehicle(vehicle, { summaryOnly: true })),
     meta: buildPaginationMeta({ page, limit, total }),
     facets,
   }
@@ -30,12 +55,12 @@ export async function listFeaturedVehicles(limit = 6) {
   const vehicles = await Vehicle.find({
     status: 'published',
     featured: true,
-  })
+  }, PUBLIC_VEHICLE_SUMMARY_PROJECTION)
     .sort({ publishedAt: -1, createdAt: -1 })
     .limit(limit)
     .lean()
 
-  return vehicles.map((vehicle) => serializePublicVehicle(vehicle))
+  return vehicles.map((vehicle) => serializePublicVehicle(vehicle, { summaryOnly: true }))
 }
 
 export async function getPublicVehicleBySlug(slug, { ipAddress } = {}) {
@@ -48,7 +73,7 @@ export async function getPublicVehicleBySlug(slug, { ipAddress } = {}) {
     await vehicle.save()
   }
 
-  return serializePublicVehicle(vehicle.toObject())
+  return serializePublicVehicle(vehicle.toObject(), { summaryOnly: false })
 }
 
 export async function incrementPublicVehicleContact(identifier) {
@@ -422,11 +447,11 @@ function normalizeFacet(items = []) {
   }))
 }
 
-function serializePublicVehicle(vehicle) {
+function serializePublicVehicle(vehicle, { summaryOnly = false } = {}) {
   const images = serializeImages(vehicle.images)
   const mainImage = vehicle.mainImage || images[0]?.url || ''
 
-  return {
+  const payload = {
     id: String(vehicle._id),
     legacyId: vehicle.legacyId ?? null,
     slug: vehicle.slug,
@@ -447,19 +472,27 @@ function serializePublicVehicle(vehicle) {
     color: vehicle.color,
     condition: vehicle.condition,
     status: vehicle.status,
-    location: vehicle.location,
-    description: vehicle.description,
-    features: vehicle.features ?? [],
-    specs: toPlainObject(vehicle.specs),
     featured: vehicle.featured,
     badge: vehicle.badge || '',
     mainImage,
     image: mainImage,
     images,
     gallery: images.map((image) => image.url),
+    publishedAt: vehicle.publishedAt ?? null,
+  }
+
+  if (summaryOnly) {
+    return payload
+  }
+
+  return {
+    ...payload,
+    location: vehicle.location,
+    description: vehicle.description,
+    features: vehicle.features ?? [],
+    specs: toPlainObject(vehicle.specs),
     views: vehicle.views ?? 0,
     contactCount: vehicle.contactCount ?? 0,
-    publishedAt: vehicle.publishedAt ?? null,
     createdAt: vehicle.createdAt,
     updatedAt: vehicle.updatedAt,
   }

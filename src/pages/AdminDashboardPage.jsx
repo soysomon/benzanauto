@@ -561,14 +561,6 @@ function buildPublishChecklist(form, selectedVehicle) {
 }
 
 function formatFriendlyError(error, fallback) {
-  if (import.meta.env.DEV && error?.request) {
-    console.error('[Admin Request Error]', {
-      status: error.status,
-      code: error.code,
-      request: error.request,
-    })
-  }
-
   const fieldErrors = error?.details?.fieldErrors
   if (fieldErrors && typeof fieldErrors === 'object') {
     const firstEntry = Object.values(fieldErrors).find((messages) => Array.isArray(messages) && messages.length > 0)
@@ -1229,11 +1221,6 @@ export default function AdminDashboardPage() {
       if (!token) return
 
       const message = 'Tu sesión expiró o dejó de ser válida. Vuelve a iniciar sesión para continuar.'
-      const requestInfo = event?.detail?.request
-
-      if (import.meta.env.DEV && requestInfo) {
-        console.error('[Admin Auth] 401 recibido', requestInfo)
-      }
 
       clearStoredAdminToken()
       setSession(null)
@@ -1636,14 +1623,6 @@ export default function AdminDashboardPage() {
 
       const payload = buildVehiclePayload(form, statusOverride)
 
-      if (import.meta.env.DEV) {
-        console.groupCollapsed('[Admin Wizard] payload before save')
-        console.log('step →', currentStep.id)
-        console.log('form state →', form)
-        console.log('payload →', payload)
-        console.groupEnd()
-      }
-
       const response = editorMode === 'edit' && selectedVehicle
         ? await updateAdminVehicle(token, selectedVehicle.id, payload)
         : await createAdminVehicle(token, payload)
@@ -1657,13 +1636,6 @@ export default function AdminDashboardPage() {
       })
       return response.vehicle
     } catch (saveError) {
-      if (import.meta.env.DEV) {
-        console.groupCollapsed('[Admin Wizard] validation/save error')
-        console.error('error →', saveError)
-        console.error('fieldErrors →', saveError?.details?.fieldErrors)
-        console.groupEnd()
-      }
-
       // When backend returns field-level errors, map them to the form and navigate to the right step
       const fieldErrors = saveError?.details?.fieldErrors
       if (fieldErrors && typeof fieldErrors === 'object' && Object.keys(fieldErrors).length > 0) {

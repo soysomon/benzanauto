@@ -4,11 +4,17 @@ export default function StatePanel({
   actionLabel,
   onAction,
   className = '',
+  role = 'status',
+  announcementMode = 'polite',
 }) {
   return (
-    <div className={`flex flex-col items-center justify-center text-center px-6 py-14 ${className}`}>
+    <section
+      role={role}
+      aria-live={announcementMode}
+      className={`flex flex-col items-center justify-center px-6 py-14 text-center ${className}`}
+    >
       <h2 className="font-heading text-2xl tracking-tight text-[#0A0A0A] mb-2">{title}</h2>
-      <p className="font-body text-sm text-[#AAA] max-w-md leading-relaxed">{message}</p>
+      <p className="max-w-md font-body text-sm leading-relaxed text-[#666]">{message}</p>
       {actionLabel && onAction && (
         <button
           type="button"
@@ -18,6 +24,6 @@ export default function StatePanel({
           {actionLabel}
         </button>
       )}
-    </div>
+    </section>
   )
 }

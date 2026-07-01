@@ -5,6 +5,9 @@ import { vehicles as demoVehicles } from '../data/vehicles.js'
 import { Vehicle } from '../models/Vehicle.js'
 import { createInitialSuperAdmin } from '../services/auth.service.js'
 import { slugify } from '../utils/slug.js'
+import { logger } from '../utils/logger.js'
+
+const seedLogger = logger.child({ scope: 'script:seed' })
 
 async function run() {
   await connectDatabase()
@@ -16,7 +19,9 @@ async function run() {
     password: env.SUPERADMIN_PASSWORD,
   })
 
-  console.log(`Superadmin listo: ${superAdmin.username}`)
+  seedLogger.info('seed_superadmin_ready', {
+    username: superAdmin.username,
+  })
 
   if (env.SEED_DEMO_VEHICLES) {
     const operations = demoVehicles.map((vehicle) => {
@@ -79,7 +84,11 @@ async function run() {
     })
 
     const result = await Vehicle.bulkWrite(operations, { ordered: false })
-    console.log(`Vehiculos demo procesados: ${result.upsertedCount + result.modifiedCount}`)
+    seedLogger.info('seed_demo_vehicles_processed', {
+      totalProcessed: result.upsertedCount + result.modifiedCount,
+      upsertedCount: result.upsertedCount,
+      modifiedCount: result.modifiedCount,
+    })
   }
 }
 
@@ -89,7 +98,9 @@ run()
     process.exit(0)
   })
   .catch(async (error) => {
-    console.error('[Seed Error]', error)
+    seedLogger.error('seed_failed', {
+      error,
+    })
     await disconnectDatabase().catch(() => {})
     process.exit(1)
   })
@@ -105,4 +116,3 @@ function guessMimeType(url) {
   if (normalized.endsWith('.avif')) return 'image/avif'
   return 'image/jpeg'
 }
-

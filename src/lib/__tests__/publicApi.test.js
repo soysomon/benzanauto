@@ -36,6 +36,7 @@ describe('publicApi caching', () => {
     vi.useRealTimers()
     vi.resetModules()
     vi.doUnmock('../apiClient')
+    window.sessionStorage.clear()
   })
 
   it('reuses cached list responses for equivalent requests to avoid duplicate catalog calls', async () => {
@@ -86,5 +87,46 @@ describe('publicApi caching', () => {
     expect(apiRequest).toHaveBeenCalledTimes(2)
     expect(fallbackResponse).toEqual(firstResponse)
     expect(fallbackResponse.meta.total).toBe(1)
+  })
+
+  it('deduplicates in-flight catalog requests with the same query params', async () => {
+    let resolveRequest
+    const apiRequest = vi.fn().mockImplementation(
+      () => new Promise((resolve) => {
+        resolveRequest = resolve
+      }),
+    )
+
+    vi.doMock('../apiClient', () => ({ apiRequest }))
+
+    const { listPublicVehicles } = await import('../publicApi')
+    const params = { limit: 60, marca: ['Toyota'] }
+
+    const firstPromise = listPublicVehicles(params)
+    const secondPromise = listPublicVehicles(params)
+
+    resolveRequest(sampleVehicleResponse)
+
+    const [firstResponse, secondResponse] = await Promise.all([firstPromise, secondPromise])
+
+    expect(apiRequest).toHaveBeenCalledTimes(1)
+    expect(firstResponse).toEqual(secondResponse)
+  })
+
+  it('reuses cached public vehicle detail responses', async () => {
+    const apiRequest = vi.fn().mockResolvedValue({
+      vehicle: sampleVehicleResponse.data[0],
+    })
+
+    vi.doMock('../apiClient', () => ({ apiRequest }))
+
+    const { getVehicleDetail } = await import('../publicApi')
+
+    const firstVehicle = await getVehicleDetail('toyota-prado-2026')
+    const secondVehicle = await getVehicleDetail('toyota-prado-2026')
+
+    expect(apiRequest).toHaveBeenCalledTimes(1)
+    expect(firstVehicle.slug).toBe('toyota-prado-2026')
+    expect(secondVehicle).toEqual(firstVehicle)
   })
 })

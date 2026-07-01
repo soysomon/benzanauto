@@ -6,6 +6,37 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+
+            if (id.includes('framer-motion')) {
+              return 'motion-vendor'
+            }
+
+            if (
+              id.includes('@remix-run') ||
+              id.includes('react-router') ||
+              id.includes('react-helmet-async')
+            ) {
+              return 'router-vendor'
+            }
+
+            if (
+              id.includes('/react/') ||
+              id.includes('react-dom') ||
+              id.includes('scheduler')
+            ) {
+              return 'react-vendor'
+            }
+
+            return undefined
+          },
+        },
+      },
+    },
     server: {
       proxy: {
         '/api': {
@@ -21,6 +52,14 @@ export default defineConfig(({ mode }) => {
       restoreMocks: true,
       clearMocks: true,
       unstubEnvs: true,
+      include: [
+        'src/**/*.{test,spec}.{js,jsx,ts,tsx}',
+      ],
+      exclude: [
+        'tests/**',
+        'backend/**',
+        'node_modules/**',
+      ],
     },
   }
 })

@@ -10,6 +10,7 @@ import {
   isSafeHttpMethod,
   safeCompareTokens,
 } from '../utils/admin-auth-cookie.js'
+import { updateRequestContext } from '../utils/request-context-store.js'
 
 export async function authenticateAdmin(req, _res, next) {
   try {
@@ -54,6 +55,13 @@ export async function authenticateAdmin(req, _res, next) {
       user,
       session,
     }
+
+    updateRequestContext({
+      userId: user.id,
+      userRole: user.role,
+      authTransport: transport,
+      sessionId: session.id,
+    })
 
     session.lastSeenAt = new Date()
     void session.save().catch(() => {})

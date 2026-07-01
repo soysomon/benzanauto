@@ -7,8 +7,10 @@ import { detectIntent } from '../services/intent.service.js'
 import { attachRecommendationContext, resolveConversationContext } from '../services/context.service.js'
 import { getRecommendationResponse } from '../services/recommendation.service.js'
 import { validateChatRequest } from '../utils/chat-request.js'
+import { logger } from '../utils/logger.js'
 
 const AI_TIMEOUT_MS = Number.parseInt(process.env.AI_TIMEOUT_MS ?? '12000', 10)
+const chatLogger = logger.child({ scope: 'chat' })
 
 async function withTimeout(promise, label) {
   let timeoutId
@@ -189,13 +191,27 @@ export async function handleChat(req, res) {
         }))
       }
 
-      console.warn('[Benzan AI] Gemini devolvió una respuesta poco útil; usando fallback.')
+      chatLogger.warn('ai_provider_response_rejected', {
+        provider: 'gemini',
+        intent,
+        reason: 'low_utility_reply',
+      })
     } catch (geminiError) {
-      console.warn('[Benzan AI] Gemini no disponible; usando Groq como fallback:', geminiError?.message ?? geminiError)
+      chatLogger.warn('ai_provider_failed', {
+        provider: 'gemini',
+        intent,
+        error: geminiError,
+        fallbackProvider: 'groq',
+      })
     }
   } else {
     const retryAfterSeconds = Math.max(1, Math.ceil(getGeminiCooldownRemainingMs() / 1000))
-    console.warn(`[Benzan AI] Gemini en cooldown por cuota; se omite por ${retryAfterSeconds}s y se usa Groq.`)
+    chatLogger.warn('ai_provider_cooldown_active', {
+      provider: 'gemini',
+      intent,
+      retryAfterSeconds,
+      fallbackProvider: 'groq',
+    })
   }
 
   try {
@@ -218,10 +234,20 @@ export async function handleChat(req, res) {
       }))
     }
 
-    console.warn('[Benzan AI] Groq devolvió una respuesta poco útil; usando motor determinista.')
+    chatLogger.warn('ai_provider_response_rejected', {
+      provider: 'groq',
+      intent,
+      reason: 'low_utility_reply',
+      fallbackProvider: 'rule-engine',
+    })
     return res.json(fallbackPayload)
   } catch (groqError) {
-    console.error('[Benzan AI] Groq también falló:', groqError?.message ?? groqError)
+    chatLogger.error('ai_provider_failed', {
+      provider: 'groq',
+      intent,
+      error: groqError,
+      fallbackProvider: 'rule-engine',
+    })
     return res.json({
       ...fallbackPayload,
       reply: recommendation.fallbackReply

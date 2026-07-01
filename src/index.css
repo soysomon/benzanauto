@@ -14,6 +14,12 @@
   body {
     @apply bg-white text-neutral-900 font-body antialiased;
     overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  :focus-visible {
+    outline: 2px solid #D4001A;
+    outline-offset: 3px;
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -44,6 +50,26 @@
   ::-webkit-scrollbar-thumb {
     background: #D4001A;
     border-radius: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    body.has-custom-cursor,
+    body.has-custom-cursor *,
+    body.has-custom-cursor *::before,
+    body.has-custom-cursor *::after {
+      cursor: auto !important;
+    }
   }
 }
 

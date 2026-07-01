@@ -13,6 +13,11 @@ import {
   setAdminSessionCookie,
 } from '../../utils/admin-auth-cookie.js'
 
+function toCookieSessionResponse(response) {
+  const { token: _token, ...safeResponse } = response
+  return safeResponse
+}
+
 export const login = asyncHandler(async (req, res) => {
   const payload = req.validated.body
   const response = await loginAdmin({
@@ -22,7 +27,7 @@ export const login = asyncHandler(async (req, res) => {
   })
 
   setAdminSessionCookie(res, response.token, response.session.expiresAt)
-  res.status(200).json(response)
+  res.status(200).json(toCookieSessionResponse(response))
 })
 
 export const forgotPassword = asyncHandler(async (req, res) => {
@@ -80,5 +85,5 @@ export const changePassword = asyncHandler(async (req, res) => {
   })
 
   setAdminSessionCookie(res, response.token, response.session.expiresAt)
-  res.json(response)
+  res.json(toCookieSessionResponse(response))
 })

@@ -3,8 +3,11 @@ import { connectDatabase } from './config/database.js'
 import { env } from './config/env.js'
 import { allowedOrigins } from './config/cors.js'
 import { createInitialSuperAdmin } from './services/auth.service.js'
+import { verifyEmailTransport } from './services/email.service.js'
+import { logger } from './utils/logger.js'
 
 const DATABASE_RETRY_DELAY_MS = 5_000
+const serverLogger = logger.child({ scope: 'server' })
 
 let databaseRetryTimer = null
 let superAdminInitialized = false
@@ -31,29 +34,59 @@ async function initializeDatabase() {
         password: env.SUPERADMIN_PASSWORD,
       })
       superAdminInitialized = true
-      console.log('[Startup] Superadmin inicial verificado.')
+      serverLogger.info('superadmin_bootstrap_verified', {
+        username: env.SUPERADMIN_USERNAME,
+      })
     }
   } catch (error) {
-    console.error('[Bootstrap Error] No se pudo conectar a MongoDB.', error)
+    serverLogger.error('database_bootstrap_failed', {
+      error,
+      retryDelayMs: DATABASE_RETRY_DELAY_MS,
+    })
     scheduleDatabaseReconnect()
+  }
+}
+
+async function initializeEmail() {
+  if (env.EMAIL_PROVIDER !== 'smtp' || !env.SMTP_VERIFY_ON_STARTUP) {
+    return
+  }
+
+  try {
+    await verifyEmailTransport({ force: true })
+    serverLogger.info('smtp_bootstrap_verified')
+  } catch (error) {
+    serverLogger.warn('smtp_bootstrap_verification_failed', {
+      error,
+    })
   }
 }
 
 async function bootstrap() {
   const app = createApp()
   const server = app.listen(env.PORT, () => {
-    console.log(`Benzan Backend corriendo en http://localhost:${env.PORT}`)
-    console.log(`CORS: ${[...allowedOrigins].join(', ')}`)
+    serverLogger.info('server_started', {
+      port: env.PORT,
+      nodeVersion: process.version,
+      corsOrigins: [...allowedOrigins],
+    })
     void initializeDatabase()
+    void initializeEmail()
   })
 
   server.on('error', (error) => {
     if (error?.code === 'EADDRINUSE') {
-      console.error(`El puerto ${env.PORT} ya esta en uso.`)
+      serverLogger.error('server_port_in_use', {
+        port: env.PORT,
+        error,
+      })
       process.exit(1)
     }
 
-    console.error('[Server Listen Error]', error)
+    serverLogger.error('server_listen_failed', {
+      port: env.PORT,
+      error,
+    })
     process.exit(1)
   })
 
@@ -67,6 +100,8 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  console.error('[Bootstrap Error]', error)
+  serverLogger.error('bootstrap_failed', {
+    error,
+  })
   process.exit(1)
 })

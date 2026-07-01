@@ -1,7 +1,8 @@
 import express from 'express'
 import path from 'node:path'
+import compression from 'compression'
 import { corsOptions, isAllowedOrigin } from './config/cors.js'
-import { env } from './config/env.js'
+import { env, isProduction } from './config/env.js'
 import { applySecurityMiddleware } from './config/security.js'
 import { notFoundHandler, errorHandler } from './middlewares/error.middleware.js'
 import { requestContext } from './middlewares/request-context.middleware.js'
@@ -15,7 +16,20 @@ import adminAuditRoutes from './routes/admin/audit.routes.js'
 import adminVehicleRoutes from './routes/admin/vehicle.routes.js'
 import adminDashboardRoutes from './routes/admin/dashboard.routes.js'
 import { getDatabaseHealth } from './config/database.js'
+import { getEmailHealth } from './services/email.service.js'
 import { UPLOADS_ROOT } from './services/storage.service.js'
+import { logger } from './utils/logger.js'
+
+const appLogger = logger.child({ scope: 'app' })
+
+function buildPublicHealthSummary({ status }) {
+  return {
+    status,
+    service: 'Benzan Auto Backend',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  }
+}
 
 export function createApp() {
   const app = express()
@@ -27,6 +41,13 @@ export function createApp() {
   app.use(requestContext)
   app.use(corsOptions)
   applySecurityMiddleware(app)
+  app.use(compression({
+    threshold: 1024,
+    filter(req, res) {
+      if (req.path?.startsWith('/uploads')) return false
+      return compression.filter(req, res)
+    },
+  }))
 
   app.use('/uploads', express.static(UPLOADS_ROOT, {
     fallthrough: false,
@@ -39,13 +60,18 @@ export function createApp() {
 
   app.get('/health', (_req, res) => {
     const database = getDatabaseHealth()
+    const email = getEmailHealth()
+    const emailIsHealthy = email.status === 'ready' || email.status === 'disabled'
+    const status = database.connected && emailIsHealthy ? 'ok' : 'degraded'
 
-    res.json({
-      status: database.connected ? 'ok' : 'degraded',
-      service: 'Benzan Auto Backend',
-      timestamp: new Date().toISOString(),
-      uptimeSeconds: Math.round(process.uptime()),
+    if (isProduction()) {
+      return res.json(buildPublicHealthSummary({ status }))
+    }
+
+    return res.json({
+      ...buildPublicHealthSummary({ status }),
       database,
+      email,
     })
   })
 
@@ -57,7 +83,7 @@ export function createApp() {
         status: 'not_ready',
         service: 'Benzan Auto Backend',
         timestamp: new Date().toISOString(),
-        database,
+        ...(isProduction() ? {} : { database }),
       })
     }
 
@@ -74,6 +100,11 @@ export function createApp() {
     const origin = req.get('origin')
 
     if (!isAllowedOrigin(origin)) {
+      appLogger.warn('request_blocked_forbidden_origin', {
+        origin,
+        method: req.method,
+        path: req.originalUrl,
+      })
       return res.status(403).json({
         error: {
           code: 'FORBIDDEN_ORIGIN',

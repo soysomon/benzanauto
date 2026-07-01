@@ -1,5 +1,6 @@
 import mongoose from 'mongoose'
 import { env } from './env.js'
+import { logger } from '../utils/logger.js'
 
 let connectionPromise = null
 let listenersRegistered = false
@@ -14,6 +15,8 @@ const CONNECTION_STATE_LABELS = Object.freeze({
   2: 'connecting',
   3: 'disconnecting',
 })
+
+const databaseLogger = logger.child({ scope: 'database' })
 
 function formatDate(value) {
   return value instanceof Date ? value.toISOString() : null
@@ -35,17 +38,27 @@ function registerConnectionListeners() {
   mongoose.connection.on('connected', () => {
     lastConnectedAt = new Date()
     lastConnectionError = null
-    console.log('[Database] Conexion establecida.')
+    databaseLogger.info('database_connected', {
+      host: mongoose.connection.host,
+      name: mongoose.connection.name,
+    })
   })
 
   mongoose.connection.on('disconnected', () => {
     lastDisconnectedAt = new Date()
-    console.warn('[Database] Conexion cerrada.')
+    databaseLogger.warn('database_disconnected', {
+      host: mongoose.connection.host,
+      name: mongoose.connection.name,
+    })
   })
 
   mongoose.connection.on('error', (error) => {
     lastConnectionError = normalizeError(error)
-    console.error('[Database Error]', error)
+    databaseLogger.error('database_connection_error', {
+      error,
+      host: mongoose.connection.host,
+      name: mongoose.connection.name,
+    })
   })
 }
 
@@ -55,6 +68,10 @@ export async function connectDatabase() {
 
   if (mongoose.connection.readyState === 1) return mongoose.connection
   if (connectionPromise) return connectionPromise
+
+  databaseLogger.info('database_connecting', {
+    host: mongoose.connection.host || undefined,
+  })
 
   connectionPromise = mongoose.connect(env.MONGODB_URI, {
     autoIndex: !['production'].includes(env.NODE_ENV),
@@ -66,6 +83,9 @@ export async function connectDatabase() {
     return mongoose.connection
   } catch (error) {
     lastConnectionError = normalizeError(error)
+    databaseLogger.error('database_connect_failed', {
+      error,
+    })
     throw error
   } finally {
     connectionPromise = null

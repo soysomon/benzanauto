@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useDeferredValue, useEffect, useId, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import VehicleCard from '../components/ui/VehicleCard'
 import StatePanel from '../components/ui/StatePanel'
 import SeoMeta from '../components/seo/SeoMeta'
@@ -27,10 +27,15 @@ function useDebouncedValue(value, delayMs = 350) {
 
 function FilterSection({ label, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
+  const sectionId = useId()
+  const reduceMotion = useReducedMotion()
 
   return (
     <div className="border-b border-neutral-200 py-5">
       <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={sectionId}
         onClick={() => setOpen((value) => !value)}
         className="w-full flex items-center justify-between text-left"
       >
@@ -45,10 +50,11 @@ function FilterSection({ label, children, defaultOpen = true }) {
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            id={sectionId}
+            initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+            animate={reduceMotion ? { height: 'auto', opacity: 1 } : { height: 'auto', opacity: 1 }}
+            exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.2 }}
             className="overflow-hidden"
           >
             <div className="pt-4 space-y-3">
@@ -63,20 +69,26 @@ function FilterSection({ label, children, defaultOpen = true }) {
 
 function CheckRow({ label, count, checked, onChange }) {
   return (
-    <label className="flex items-center justify-between cursor-pointer group">
+    <label className="group flex cursor-pointer items-center justify-between">
       <div className="flex items-center gap-2.5">
-        <div
-          className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-            checked ? 'border-neutral-900 bg-neutral-900' : 'border-neutral-300 group-hover:border-neutral-500'
-          }`}
-          onClick={onChange}
-        >
-          {checked && (
-            <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </div>
+        <span className="relative">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onChange}
+            className="peer sr-only"
+          />
+          <span
+            aria-hidden="true"
+            className="flex h-4 w-4 items-center justify-center border border-neutral-300 transition-colors peer-checked:border-neutral-900 peer-checked:bg-neutral-900 group-hover:border-neutral-500"
+          >
+            {checked ? (
+              <svg className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : null}
+          </span>
+        </span>
         <span className="font-body text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">{label}</span>
       </div>
       {count != null && (
@@ -182,7 +194,8 @@ export default function Inventario() {
   )
   const { searchQuery, statusFilter, brands, categories, fuels, maxPrice, sortBy } = filters
   const [searchInput, setSearchInput] = useState(searchQuery)
-  const debouncedSearchInput = useDebouncedValue(searchInput, 350)
+  const deferredSearchInput = useDeferredValue(searchInput)
+  const debouncedSearchInput = useDebouncedValue(deferredSearchInput, 350)
 
   useEffect(() => {
     setSearchInput(searchQuery)
@@ -290,12 +303,16 @@ export default function Inventario() {
 
         if (ignore || controller.signal.aborted) return
 
-        setVehicles(response.data)
-        setMeta(response.meta)
-        setFacets(normalizeFacets(response.facets))
+        startTransition(() => {
+          setVehicles(response.data)
+          setMeta(response.meta)
+          setFacets(normalizeFacets(response.facets))
+        })
       } catch (loadError) {
         if (!ignore && !controller.signal.aborted) {
-          setError(formatInventoryError(loadError))
+          startTransition(() => {
+            setError(formatInventoryError(loadError))
+          })
         }
       } finally {
         if (!ignore && !controller.signal.aborted) {
@@ -347,7 +364,11 @@ export default function Inventario() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <form
+            className="flex flex-col gap-3 sm:flex-row sm:items-center"
+            role="search"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <label className="relative block min-w-[280px]">
               <span className="sr-only">Buscar vehículo</span>
               <svg
@@ -364,6 +385,7 @@ export default function Inventario() {
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Buscar Toyota, Prado, diesel..."
                 className="w-full border border-neutral-200 bg-white py-3 pl-11 pr-10 font-body text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900"
+                aria-describedby="inventory-search-hint"
               />
               {searchInput && (
                 <button
@@ -378,8 +400,12 @@ export default function Inventario() {
                 </button>
               )}
             </label>
+            <span id="inventory-search-hint" className="sr-only">
+              La búsqueda se aplica automáticamente mientras escribes.
+            </span>
 
             <select
+              aria-label="Ordenar vehículos"
               value={sortBy}
               onChange={(event) => updateFilters({ sortBy: event.target.value })}
               className="font-body text-sm text-neutral-700 border-0 bg-transparent pr-6 focus:outline-none cursor-pointer appearance-none"
@@ -390,16 +416,18 @@ export default function Inventario() {
               <option value="price-desc">Precio: mayor a menor</option>
               <option value="year">Año: más reciente</option>
             </select>
-          </div>
+          </form>
         </div>
 
         <div className="flex gap-10 py-8">
-          <aside className="hidden lg:block w-60 flex-shrink-0">
+          <aside className="hidden lg:block w-60 flex-shrink-0" aria-label="Filtros del inventario">
             <div className="flex border border-neutral-200 mb-6 overflow-hidden">
               {['Todos', 'Nuevo', 'Usado'].map((status) => (
                 <button
+                  type="button"
                   key={status}
                   onClick={() => updateFilters({ statusFilter: status })}
+                  aria-pressed={statusFilter === status}
                   className={`flex-1 font-body text-sm py-2.5 transition-colors duration-150 ${
                     statusFilter === status
                       ? 'bg-neutral-900 text-white'
@@ -449,6 +477,7 @@ export default function Inventario() {
 
             {(searchQuery || brands.length || categories.length || fuels.length || statusFilter !== 'Todos' || maxPrice) > 0 && (
               <button
+                type="button"
                 onClick={resetFilters}
                 className="mt-4 w-full font-body text-xs text-neutral-500 hover:text-neutral-900 underline underline-offset-2 transition-colors"
               >
@@ -457,9 +486,12 @@ export default function Inventario() {
             )}
           </aside>
 
-          <div className="flex-1 min-w-0">
+          <section className="flex-1 min-w-0" aria-labelledby="inventory-results-heading" aria-busy={loading}>
             <div className="flex flex-col gap-3 mb-6">
-              <p className="font-body text-sm text-neutral-500">
+              <h2 id="inventory-results-heading" className="sr-only">
+                Resultados del inventario
+              </h2>
+              <p className="font-body text-sm text-neutral-500" role="status" aria-live="polite">
                 {loading && vehicles.length === 0
                   ? 'Cargando inventario...'
                   : `${meta.total} vehículo${meta.total !== 1 ? 's' : ''} disponible${meta.total !== 1 ? 's' : ''}`}
@@ -476,6 +508,7 @@ export default function Inventario() {
                     </span>
                   ))}
                   <button
+                    type="button"
                     onClick={resetFilters}
                     className="font-body text-xs text-neutral-500 hover:text-neutral-900 underline underline-offset-2 transition-colors"
                   >
@@ -485,7 +518,7 @@ export default function Inventario() {
               )}
 
               {error && vehicles.length > 0 && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3" role="status" aria-live="polite">
                   <p className="font-body text-sm text-amber-800">
                     {error}
                   </p>
@@ -500,9 +533,10 @@ export default function Inventario() {
                 ))}
               </div>
             ) : loading && vehicles.length === 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5" role="status" aria-live="polite">
+                <span className="sr-only">Cargando tarjetas del inventario.</span>
                 {[0, 1, 2, 3, 4, 5].map((item) => (
-                  <div key={item} className="border border-neutral-200 bg-neutral-50 animate-pulse min-h-[380px]" />
+                  <div key={item} aria-hidden="true" className="border border-neutral-200 bg-neutral-50 animate-pulse min-h-[380px]" />
                 ))}
               </div>
             ) : vehicles.length > 0 ? (
@@ -517,11 +551,14 @@ export default function Inventario() {
                 message={error}
                 actionLabel="Reintentar"
                 onAction={() => setRetryNonce((current) => current + 1)}
+                role="alert"
+                announcementMode="assertive"
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-32 text-center">
                 <p className="font-body text-neutral-400 text-sm mb-2">Sin vehículos con esos filtros.</p>
                 <button
+                  type="button"
                   onClick={resetFilters}
                   className="font-body text-sm text-neutral-900 underline underline-offset-2 mt-2"
                 >
@@ -529,7 +566,7 @@ export default function Inventario() {
                 </button>
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         <div className="border-t border-neutral-200 py-16 text-center">

@@ -95,7 +95,6 @@ export async function sendMessage({ history, currentContext = {} }) {
     history: previousHistory,
     currentContext,
   })
-  let lastError = null
 
   try {
     for (const endpoint of endpoints) {
@@ -121,18 +120,16 @@ export async function sendMessage({ history, currentContext = {} }) {
           provider: data.provider,
           recommendedVehicles: Array.isArray(data.recommendedVehicles) ? data.recommendedVehicles : [],
         }
-      } catch (error) {
-        lastError = error
-        console.error(`[Benzan AI] fallo en ${endpoint}`, error)
+      } catch {
+        // try next endpoint candidate
       }
     }
-  } catch (error) {
-    lastError = error
+  } catch {
+    // fallback handled below
   } finally {
     clearTimeout(timeoutId)
   }
 
-  console.error('[Benzan AI] sin respuesta disponible', lastError)
   return {
     ok: false,
     text: `En este momento no puedo responder. Verifica que el backend esté encendido. Si prefieres, contáctanos al ${COMPANY.phoneDisplay} o por WhatsApp: ${buildWhatsAppUrl()}.`,

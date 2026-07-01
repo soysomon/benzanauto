@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useCallback, useId, useMemo, useRef } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import VehicleCard from '../components/ui/VehicleCard'
 import Badge from '../components/ui/Badge'
 import StatePanel from '../components/ui/StatePanel'
@@ -9,8 +9,35 @@ import { COMPANY, buildPhoneUrl, buildWhatsAppUrl } from '../../shared/company.j
 import { getVehicleDetail, listPublicVehicles, trackVehicleContact } from '../lib/publicApi'
 import { buildBreadcrumbStructuredData, buildVehicleStructuredData } from '../lib/seoStructuredData'
 
+function trapFocusInElement(container, event) {
+  if (!container || event.key !== 'Tab') return
+
+  const focusableNodes = container.querySelectorAll(
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )
+  const focusable = [...focusableNodes].filter((node) => !node.hasAttribute('hidden'))
+
+  if (focusable.length === 0) {
+    event.preventDefault()
+    return
+  }
+
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 export default function VehiculoDetalle() {
   const { slug } = useParams()
+  const navigate = useNavigate()
+  const reduceMotion = useReducedMotion()
   const [vehicle, setVehicle] = useState(null)
   const [related, setRelated] = useState([])
   const [loading, setLoading] = useState(true)
@@ -18,6 +45,10 @@ export default function VehiculoDetalle() {
   const [activeImage, setActiveImage] = useState(0)
   const [lightbox, setLightbox] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(0)
+  const lightboxTitleId = useId()
+  const lightboxRef = useRef(null)
+  const closeButtonRef = useRef(null)
+  const previousActiveElementRef = useRef(null)
 
   useEffect(() => {
     let ignore = false
@@ -122,14 +153,24 @@ export default function VehiculoDetalle() {
   useEffect(() => {
     if (!lightbox) return
 
+    previousActiveElementRef.current = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.setTimeout(() => closeButtonRef.current?.focus(), 0)
+
     const onKey = (event) => {
       if (event.key === 'Escape') closeLightbox()
       if (event.key === 'ArrowLeft') lbPrev()
       if (event.key === 'ArrowRight') lbNext()
+      trapFocusInElement(lightboxRef.current, event)
     }
 
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      previousActiveElementRef.current?.focus?.()
+      window.removeEventListener('keydown', onKey)
+    }
   }, [lbNext, lbPrev, lightbox])
 
   if (loading) {
@@ -142,16 +183,17 @@ export default function VehiculoDetalle() {
           noIndex
         />
         <div className="container-pad py-10">
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14" role="status" aria-live="polite" aria-busy="true">
+            <span className="sr-only">Cargando ficha del vehículo.</span>
             <div className="lg:col-span-3">
-              <div className="aspect-[16/10] bg-neutral-100 animate-pulse" />
+              <div aria-hidden="true" className="aspect-[16/10] bg-neutral-100 animate-pulse" />
             </div>
             <div className="lg:col-span-2 space-y-4">
-              <div className="h-8 w-2/3 bg-neutral-100 animate-pulse" />
-              <div className="h-20 bg-neutral-100 animate-pulse" />
+              <div aria-hidden="true" className="h-8 w-2/3 bg-neutral-100 animate-pulse" />
+              <div aria-hidden="true" className="h-20 bg-neutral-100 animate-pulse" />
               <div className="grid grid-cols-2 gap-2">
                 {[0, 1, 2, 3].map((item) => (
-                  <div key={item} className="h-20 bg-neutral-100 animate-pulse" />
+                  <div key={item} aria-hidden="true" className="h-20 bg-neutral-100 animate-pulse" />
                 ))}
               </div>
             </div>
@@ -176,7 +218,9 @@ export default function VehiculoDetalle() {
             title="Vehículo no disponible"
             message={error || 'No encontramos la unidad que intentas ver o ya no está publicada.'}
             actionLabel="Volver al inventario"
-            onAction={() => { window.location.href = '/inventario' }}
+            onAction={() => { navigate('/inventario') }}
+            role="alert"
+            announcementMode="assertive"
           />
         </div>
       </div>
@@ -210,16 +254,22 @@ export default function VehiculoDetalle() {
         <div className="container-pad">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
             <div className="lg:col-span-3 flex flex-col gap-3">
-              <motion.div
-                initial={{ opacity: 0, scale: 1.02 }}
+              <motion.button
+                type="button"
+                initial={reduceMotion ? false : { opacity: 0, scale: 1.02 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5 }}
-                className="relative aspect-[16/10] overflow-hidden bg-neutral-100 cursor-zoom-in group"
+                transition={reduceMotion ? { duration: 0 } : { duration: 0.5 }}
+                className="group relative aspect-[16/10] cursor-zoom-in overflow-hidden bg-neutral-100 text-left"
                 onClick={() => openLightbox(activeImage)}
+                aria-haspopup="dialog"
+                aria-label={`Ampliar galería de ${vehicle.brand} ${vehicle.model}`}
               >
                 <img
                   src={gallery[activeImage]}
                   alt={`${vehicle.brand} ${vehicle.model}`}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/20 to-transparent pointer-events-none" />
@@ -235,19 +285,29 @@ export default function VehiculoDetalle() {
                   <Badge variant={vehicle.condition === 'Nuevo' ? 'red' : 'outline'}>{vehicle.condition}</Badge>
                   {vehicle.badge && <Badge variant="default">{vehicle.badge}</Badge>}
                 </div>
-              </motion.div>
+              </motion.button>
 
               {gallery.length > 1 && (
-                <div className="flex gap-2">
+                <div className="flex gap-2" role="tablist" aria-label="Miniaturas de la galería">
                   {gallery.map((image, index) => (
                     <button
+                      type="button"
                       key={image}
-                      onClick={() => { setActiveImage(index); openLightbox(index) }}
+                      onClick={() => setActiveImage(index)}
+                      role="tab"
+                      aria-selected={index === activeImage}
+                      aria-label={`Ver foto ${index + 1} de ${gallery.length}`}
                       className={`relative flex-1 aspect-[16/10] overflow-hidden border-2 transition-colors cursor-zoom-in ${
                         index === activeImage ? 'border-b-red' : 'border-transparent opacity-50 hover:opacity-75'
                       }`}
                     >
-                      <img src={image} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={image}
+                        alt={`Miniatura ${index + 1} de ${vehicle.brand} ${vehicle.model}`}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover"
+                      />
                     </button>
                   ))}
                 </div>
@@ -256,9 +316,9 @@ export default function VehiculoDetalle() {
 
             <div className="lg:col-span-2">
               <motion.div
-                initial={{ opacity: 0, x: 20 }}
+                initial={reduceMotion ? false : { opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                transition={reduceMotion ? { duration: 0 } : { duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                 className="sticky top-24 flex flex-col gap-6"
               >
                 <div>
@@ -368,16 +428,23 @@ export default function VehiculoDetalle() {
       <AnimatePresence>
         {lightbox && (
           <motion.div
+            ref={lightboxRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={lightboxTitleId}
             className="fixed inset-0 z-[100] flex items-center justify-center"
-            initial={{ opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.2 }}
           >
             <div
               className="absolute inset-0 bg-black/92 backdrop-blur-sm"
               onClick={closeLightbox}
             />
+            <h2 id={lightboxTitleId} className="sr-only">
+              Galería ampliada de {vehicle.brand} {vehicle.model}
+            </h2>
 
             <AnimatePresence mode="wait">
               <motion.img
@@ -385,10 +452,10 @@ export default function VehiculoDetalle() {
                 src={gallery[lightboxIdx]}
                 alt={`${vehicle.brand} ${vehicle.model} — foto ${lightboxIdx + 1}`}
                 className="relative z-10 max-w-[92vw] max-h-[85vh] object-contain"
-                initial={{ opacity: 0, scale: 0.96 }}
+                initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
+                transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                 draggable={false}
               />
             </AnimatePresence>
@@ -396,8 +463,11 @@ export default function VehiculoDetalle() {
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
               {gallery.map((_, index) => (
                 <button
+                  type="button"
                   key={index}
                   onClick={() => setLightboxIdx(index)}
+                  aria-label={`Ir a la foto ${index + 1}`}
+                  aria-pressed={index === lightboxIdx}
                   className={`rounded-full transition-all duration-200 ${
                     index === lightboxIdx ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'
                   }`}
@@ -406,6 +476,8 @@ export default function VehiculoDetalle() {
             </div>
 
             <button
+              ref={closeButtonRef}
+              type="button"
               onClick={closeLightbox}
               className="absolute top-5 right-5 z-20 w-10 h-10 flex items-center justify-center text-white/70 hover:text-white transition-colors"
               aria-label="Cerrar"
@@ -417,6 +489,7 @@ export default function VehiculoDetalle() {
 
             {gallery.length > 1 && (
               <button
+                type="button"
                 onClick={lbPrev}
                 className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors"
                 aria-label="Anterior"
@@ -429,6 +502,7 @@ export default function VehiculoDetalle() {
 
             {gallery.length > 1 && (
               <button
+                type="button"
                 onClick={lbNext}
                 className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors"
                 aria-label="Siguiente"

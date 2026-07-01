@@ -4,55 +4,103 @@ const CSRF_STORAGE_KEY = 'benzan_admin_csrf_token'
 
 export const COOKIE_SESSION_TOKEN = '__cookie_session__'
 
+function getSessionStorage() {
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+function getLegacyStorage() {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function readStorageValue(key) {
+  const sessionStorage = getSessionStorage()
+  const sessionValue = sessionStorage?.getItem(key)
+  if (sessionValue !== null && sessionValue !== undefined) {
+    return sessionValue
+  }
+
+  const legacyStorage = getLegacyStorage()
+  const legacyValue = legacyStorage?.getItem(key)
+  if (legacyValue !== null && legacyValue !== undefined && sessionStorage) {
+    sessionStorage.setItem(key, legacyValue)
+    legacyStorage.removeItem(key)
+  }
+
+  return legacyValue ?? null
+}
+
+function setStorageValue(key, value) {
+  const sessionStorage = getSessionStorage()
+  if (sessionStorage) {
+    sessionStorage.setItem(key, value)
+  }
+
+  const legacyStorage = getLegacyStorage()
+  legacyStorage?.removeItem(key)
+}
+
+function removeStorageValue(key) {
+  getSessionStorage()?.removeItem(key)
+  getLegacyStorage()?.removeItem(key)
+}
+
 export function isCookieBackedAdminSessionToken(token) {
   return token === COOKIE_SESSION_TOKEN
 }
 
 export function getStoredAdminToken() {
-  return window.localStorage.getItem(STORAGE_KEY)
+  return readStorageValue(STORAGE_KEY)
 }
 
 export function getStoredAdminCsrfToken() {
-  return window.localStorage.getItem(CSRF_STORAGE_KEY)
+  return readStorageValue(CSRF_STORAGE_KEY)
 }
 
 export function getStoredAdminUser() {
-  const rawUser = window.localStorage.getItem(USER_STORAGE_KEY)
+  const rawUser = readStorageValue(USER_STORAGE_KEY)
   if (!rawUser) return null
 
   try {
     return JSON.parse(rawUser)
   } catch {
-    window.localStorage.removeItem(USER_STORAGE_KEY)
+    removeStorageValue(USER_STORAGE_KEY)
     return null
   }
 }
 
 export function setStoredAdminToken(token) {
   if (!token) {
-    window.localStorage.removeItem(STORAGE_KEY)
+    removeStorageValue(STORAGE_KEY)
     return
   }
 
-  window.localStorage.setItem(STORAGE_KEY, token)
+  setStorageValue(STORAGE_KEY, token)
 }
 
 export function setStoredAdminCsrfToken(token) {
   if (!token) {
-    window.localStorage.removeItem(CSRF_STORAGE_KEY)
+    removeStorageValue(CSRF_STORAGE_KEY)
     return
   }
 
-  window.localStorage.setItem(CSRF_STORAGE_KEY, token)
+  setStorageValue(CSRF_STORAGE_KEY, token)
 }
 
 export function setStoredAdminUser(user) {
   if (!user) {
-    window.localStorage.removeItem(USER_STORAGE_KEY)
+    removeStorageValue(USER_STORAGE_KEY)
     return
   }
 
-  window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+  setStorageValue(USER_STORAGE_KEY, JSON.stringify(user))
 }
 
 export function setStoredAdminSession(token, user, { csrfToken = '', cookieBacked = false } = {}) {
@@ -62,7 +110,7 @@ export function setStoredAdminSession(token, user, { csrfToken = '', cookieBacke
 }
 
 export function clearStoredAdminToken() {
-  window.localStorage.removeItem(STORAGE_KEY)
-  window.localStorage.removeItem(USER_STORAGE_KEY)
-  window.localStorage.removeItem(CSRF_STORAGE_KEY)
+  removeStorageValue(STORAGE_KEY)
+  removeStorageValue(USER_STORAGE_KEY)
+  removeStorageValue(CSRF_STORAGE_KEY)
 }

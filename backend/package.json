@@ -9,6 +9,9 @@
     "dev": "node --watch src/server.js",
     "seed": "node src/scripts/seed.js",
     "smoke": "node src/scripts/smoke-test.js",
+    "email:verify": "node src/scripts/verify-email.js",
+    "indexes:diff": "node src/scripts/sync-indexes.js",
+    "indexes:sync": "node src/scripts/sync-indexes.js --apply",
     "audit:prod": "npm audit --omit=dev",
     "verify": "npm run smoke && npm run audit:prod"
   },
@@ -16,6 +19,7 @@
     "@aws-sdk/client-s3": "^3.1071.0",
     "@google/genai": "^2.8.0",
     "bcryptjs": "^3.0.2",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",

@@ -7,7 +7,7 @@ export default function AdminAuthLayout({
 }) {
   return (
     <div className="min-h-screen bg-white flex">
-      <div className="hidden lg:flex lg:w-[44%] bg-[#0A0A0A] flex-col justify-between p-14 relative overflow-hidden">
+      <aside className="hidden lg:flex lg:w-[44%] bg-[#0A0A0A] flex-col justify-between p-14 relative overflow-hidden" aria-hidden="true">
         <p className="font-body text-[11px] uppercase tracking-[0.28em] text-white/25">
           Benzan Auto Import
         </p>
@@ -31,17 +31,17 @@ export default function AdminAuthLayout({
         <div className="absolute -bottom-40 -right-40 w-[480px] h-[480px] rounded-full border border-white/[0.04] pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-[280px] h-[280px] rounded-full border border-white/[0.06] pointer-events-none" />
         <div className="absolute bottom-32 right-16 w-3 h-3 rounded-full bg-[#d4001a]/60" />
-      </div>
+      </aside>
 
-      <div className="flex-1 flex items-center justify-center px-8 py-16">
+      <section className="flex-1 flex items-center justify-center px-8 py-16" aria-labelledby="admin-auth-title">
         <div className="w-full max-w-[420px]">
           <div className="mb-10">
             <p className="font-body text-[11px] uppercase tracking-[0.28em] text-[#d4001a] mb-3">
               {eyebrow}
             </p>
-            <h2 className="font-heading text-[32px] tracking-tight text-[#0A0A0A] leading-tight">
+            <h1 id="admin-auth-title" className="font-heading text-[32px] tracking-tight text-[#0A0A0A] leading-tight">
               {title}
-            </h2>
+            </h1>
             {description ? (
               <p className="font-body text-sm text-[#777] mt-4 leading-relaxed">
                 {description}
@@ -57,7 +57,7 @@ export default function AdminAuthLayout({
             </div>
           ) : null}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

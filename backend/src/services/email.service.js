@@ -1,8 +1,21 @@
 import nodemailer from 'nodemailer'
 import { env, isProduction, isTest } from '../config/env.js'
+import { logger } from '../utils/logger.js'
 
 let transporter
+let verifyPromise = null
 const sentEmails = []
+const emailHealth = {
+  provider: env.EMAIL_PROVIDER,
+  enabled: env.EMAIL_PROVIDER === 'smtp',
+  verified: env.EMAIL_PROVIDER !== 'smtp',
+  status: env.EMAIL_PROVIDER === 'smtp' ? 'unknown' : 'disabled',
+  lastVerificationAttemptAt: null,
+  lastVerifiedAt: null,
+  lastDeliveryAt: null,
+  lastError: null,
+}
+const emailLogger = logger.child({ scope: 'email' })
 
 function getAdminBaseUrl() {
   return env.FRONTEND_ADMIN_URL || env.FRONTEND_URL || 'http://localhost:5173/admin'
@@ -20,18 +33,102 @@ function getTransporter() {
   }
 
   if (!transporter) {
-    transporter = nodemailer.createTransport({
+    const transportConfig = {
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_SECURE,
+      pool: env.SMTP_POOL,
+      requireTLS: env.SMTP_REQUIRE_TLS,
+      connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
+      greetingTimeout: env.SMTP_GREETING_TIMEOUT_MS,
+      socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
       auth: {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
       },
-    })
+    }
+
+    if (env.SMTP_TLS_SERVERNAME) {
+      transportConfig.tls = {
+        servername: env.SMTP_TLS_SERVERNAME,
+      }
+    }
+
+    transporter = nodemailer.createTransport(transportConfig)
   }
 
   return transporter
+}
+
+function formatHeaderAddress(name, email) {
+  const normalizedEmail = String(email ?? '').trim()
+  if (!normalizedEmail) return ''
+
+  const normalizedName = String(name ?? '').trim().replace(/"/g, '\\"')
+  return normalizedName ? `"${normalizedName}" <${normalizedEmail}>` : normalizedEmail
+}
+
+function normalizeError(error) {
+  if (!error) return null
+
+  return {
+    name: error.name ?? 'Error',
+    message: error.message ?? 'Unknown email error.',
+    code: error.code ?? null,
+    command: error.command ?? null,
+  }
+}
+
+function markEmailError(error) {
+  emailHealth.verified = false
+  emailHealth.status = 'error'
+  emailHealth.lastError = normalizeError(error)
+}
+
+export async function verifyEmailTransport({ force = false } = {}) {
+  if (env.EMAIL_PROVIDER !== 'smtp') {
+    emailHealth.provider = env.EMAIL_PROVIDER
+    emailHealth.enabled = false
+    emailHealth.verified = true
+    emailHealth.status = 'disabled'
+    emailHealth.lastError = null
+    return { ok: true, skipped: true, reason: 'provider-disabled', health: getEmailHealth() }
+  }
+
+  if (verifyPromise && !force) {
+    return verifyPromise
+  }
+
+  const client = getTransporter()
+  emailHealth.provider = env.EMAIL_PROVIDER
+  emailHealth.enabled = true
+  emailHealth.status = 'verifying'
+  emailHealth.lastVerificationAttemptAt = new Date().toISOString()
+
+  verifyPromise = client.verify()
+    .then(() => {
+      emailHealth.verified = true
+      emailHealth.status = 'ready'
+      emailHealth.lastVerifiedAt = new Date().toISOString()
+      emailHealth.lastError = null
+
+      return { ok: true, skipped: false, health: getEmailHealth() }
+    })
+    .catch((error) => {
+      markEmailError(error)
+      throw error
+    })
+    .finally(() => {
+      verifyPromise = null
+    })
+
+  return verifyPromise
+}
+
+export function getEmailHealth() {
+  return {
+    ...emailHealth,
+  }
 }
 
 async function deliverEmail({ to, subject, text, html, category }) {
@@ -48,7 +145,11 @@ async function deliverEmail({ to, subject, text, html, category }) {
 
   if (env.EMAIL_PROVIDER !== 'smtp') {
     if (!isProduction()) {
-      console.info('[Email Disabled]', payload)
+      emailLogger.debug('email_delivery_skipped', {
+        category,
+        to,
+        reason: 'provider_disabled',
+      })
     }
 
     if (isTest()) {
@@ -59,13 +160,29 @@ async function deliverEmail({ to, subject, text, html, category }) {
   }
 
   const client = getTransporter()
-  await client.sendMail({
-    from: env.EMAIL_FROM,
-    to,
-    subject,
-    text,
-    html,
-  })
+  try {
+    await client.sendMail({
+      from: formatHeaderAddress(env.EMAIL_FROM_NAME, env.EMAIL_FROM),
+      to,
+      replyTo: env.EMAIL_REPLY_TO || undefined,
+      subject,
+      text,
+      html,
+    })
+  } catch (error) {
+    markEmailError(error)
+    emailLogger.error('email_delivery_failed', {
+      category,
+      to,
+      error,
+    })
+    throw error
+  }
+
+  emailHealth.status = 'ready'
+  emailHealth.verified = true
+  emailHealth.lastDeliveryAt = new Date().toISOString()
+  emailHealth.lastError = null
 
   if (isTest()) {
     sentEmails.push(payload)
