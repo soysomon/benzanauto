@@ -3,7 +3,7 @@ const USD_TO_DOP = Number.parseFloat(process.env.USD_TO_DOP ?? '60')
 const VEHICLE_TYPE_ALIASES = {
   SUV: ['suv', 'jeepeta', 'jeepetas'],
   Pickup: ['pickup', 'pickups', 'camioneta', 'camionetas'],
-  'Sedán': ['sedan', 'sedán', 'sedanes'],
+  Sedan: ['sedan', 'sedán', 'sedanes'],
   Compacto: ['compacto', 'compacta', 'hatchback'],
   'Coupé': ['coupe', 'coupé', 'coupes'],
 }

@@ -35,6 +35,68 @@ function includesAny(text, keywords) {
   return keywords.some((keyword) => text.includes(normalizeText(keyword)))
 }
 
+const CATEGORY_MATCHERS = [
+  {
+    canonical: 'SUV',
+    aliases: ['suv', 'jeepeta', 'jeepetas', 'sport utility'],
+  },
+  {
+    canonical: 'Pickup',
+    aliases: ['pickup', 'pickups', 'pick up', 'camioneta', 'camionetas', 'truck'],
+  },
+  {
+    canonical: 'Sedan',
+    aliases: ['sedan', 'sedán', 'sedanes'],
+  },
+  {
+    canonical: 'Compacto',
+    aliases: ['compacto', 'compacta', 'hatchback'],
+  },
+  {
+    canonical: 'Coupé',
+    aliases: ['coupe', 'coupé', 'coupe deportivo'],
+  },
+]
+
+function normalizeVehicleCategory(value = '') {
+  const rawValue = typeof value === 'string' ? value : ''
+  const normalizedValue = normalizeText(rawValue)
+
+  if (!normalizedValue) {
+    return ''
+  }
+
+  for (const category of CATEGORY_MATCHERS) {
+    if (includesAny(normalizedValue, category.aliases)) {
+      return category.canonical
+    }
+  }
+
+  return rawValue.trim()
+}
+
+function getVehicleCategory(vehicle) {
+  return normalizeVehicleCategory(vehicle?.category ?? vehicle?.bodyType ?? '')
+}
+
+function vehicleMatchesCategory(vehicle, desiredCategory) {
+  if (!desiredCategory) return true
+  return getVehicleCategory(vehicle) === desiredCategory
+}
+
+function getCategoryAvailabilityLabel(category) {
+  switch (category) {
+    case 'Pickup':
+      return 'pickups'
+    case 'Sedan':
+      return 'sedanes'
+    case 'SUV':
+      return 'SUV'
+    default:
+      return category.toLowerCase()
+  }
+}
+
 function equalIdLists(a = [], b = []) {
   return a.length === b.length && a.every((item, index) => item === b[index])
 }
@@ -121,13 +183,15 @@ function getConditionLabel(vehicle) {
 
 function getCategoryFromIntent(intent, context) {
   if (intent === 'suv_search') return 'SUV'
-  if (intent === 'sedan_search') return 'Sedán'
+  if (intent === 'sedan_search') return 'Sedan'
   if (intent === 'pickup_search') return 'Pickup'
-  return context.vehicleType
+  return normalizeVehicleCategory(context.vehicleType)
 }
 
 function buildReason(vehicle, context, intent, isAlternative = false) {
   const parts = []
+  const vehicleCategory = getVehicleCategory(vehicle)
+  const requestedCategory = normalizeVehicleCategory(context.vehicleType)
 
   if (isAlternative) {
     parts.push('Alternativa cercana')
@@ -140,10 +204,10 @@ function buildReason(vehicle, context, intent, isAlternative = false) {
     }
   }
 
-  if (context.vehicleType && vehicle.category === context.vehicleType) {
-    parts.push(vehicle.category)
-  } else if (!parts.includes(vehicle.category)) {
-    parts.push(vehicle.category)
+  if (requestedCategory && vehicleCategory === requestedCategory) {
+    parts.push(vehicleCategory)
+  } else if (vehicleCategory && !parts.includes(vehicleCategory)) {
+    parts.push(vehicleCategory)
   }
 
   if (context.fuelType && context.fuelType !== 'Eléctrico' && vehicle.fuel === context.fuelType) {
@@ -164,6 +228,7 @@ function buildReason(vehicle, context, intent, isAlternative = false) {
 function scoreVehicle(vehicle, context, intent) {
   let score = 0
   const passengerCapacity = getPassengerCapacity(vehicle)
+  const vehicleCategory = getVehicleCategory(vehicle)
 
   if (context.preferredBrand && vehicle.brand === context.preferredBrand) score += 32
   if (context.fuelType && context.fuelType !== 'Eléctrico' && vehicle.fuel === context.fuelType) score += 28
@@ -171,20 +236,20 @@ function scoreVehicle(vehicle, context, intent) {
   if (context.drivetrain && matchesDrivetrain(vehicle, context.drivetrain)) score += 18
 
   const desiredCategory = getCategoryFromIntent(intent, context)
-  if (desiredCategory && vehicle.category === desiredCategory) score += 34
+  if (desiredCategory && vehicleCategory === desiredCategory) score += 34
 
   if (intent === 'family_vehicle' || context.usage === 'familiar') {
     score += passengerCapacity >= 7 ? 30 : passengerCapacity >= 5 ? 18 : passengerCapacity === null ? 0 : -20
-    score += vehicle.category === 'SUV' ? 14 : 0
+    score += vehicleCategory === 'SUV' ? 14 : 0
   }
 
   if (context.usage === 'trabajo') {
-    score += vehicle.category === 'Pickup' ? 24 : 0
+    score += vehicleCategory === 'Pickup' ? 24 : 0
   }
 
   if (context.usage === 'ciudad') {
     score += vehicle.fuel === 'Híbrido' ? 14 : 0
-    score += vehicle.category === 'SUV' ? 6 : 0
+    score += vehicleCategory === 'SUV' ? 6 : 0
   }
 
   if (context.usage === 'aventura') {
@@ -212,7 +277,7 @@ function applyBaseFilters(intent, context, inventory = [], options = {}) {
   const allowElectricFallback = options.allowElectricFallback === true
 
   return inventory.filter((vehicle) => {
-    if (desiredCategory && vehicle.category !== desiredCategory) return false
+    if (!vehicleMatchesCategory(vehicle, desiredCategory)) return false
     if (context.preferredBrand && vehicle.brand !== context.preferredBrand) return false
     if (context.transmission && !matchesTransmission(vehicle, context.transmission)) return false
     if (context.drivetrain && !matchesDrivetrain(vehicle, context.drivetrain)) return false
@@ -251,7 +316,7 @@ function serializeVehicle(vehicle, context, intent, isAlternative = false) {
     price: vehicle.price,
     image: vehicle.image,
     mainImage: vehicle.mainImage ?? vehicle.image,
-    category: vehicle.category,
+    category: getVehicleCategory(vehicle),
     transmission: vehicle.transmission,
     fuel: vehicle.fuel,
     traction: vehicle.traction,
@@ -368,7 +433,7 @@ function buildVehicleDetailsReply(vehicle) {
 
   return [
     `El ${vehicle.brand} ${vehicle.model} ${vehicle.year} está en ${formatUsd(vehicle.price)}.`,
-    `Es un ${vehicle.category} ${vehicle.fuel}, transmisión ${vehicle.transmission}, tracción ${vehicle.traction} y ${getPassengerCapacityLabel(vehicle)}.`,
+    `Es un ${getVehicleCategory(vehicle)} ${vehicle.fuel}, transmisión ${vehicle.transmission}, tracción ${vehicle.traction} y ${getPassengerCapacityLabel(vehicle)}.`,
     `${vehicle.description} Si quieres, también te lo comparo con otra opción del inventario o te digo si conviene más para familia, ciudad o trabajo.`,
   ].join('\n\n')
 }
@@ -436,6 +501,32 @@ function buildVehicleListReply(referenceVehicles, intent, context) {
     ...lines,
     '',
     'Si quieres, te las ordeno por precio, te digo cuál conviene más según tu uso o te ayudo a bajar la selección a una sola opción.',
+  ].join('\n')
+}
+
+function buildCategoryUnavailableReply(category, alternatives, context) {
+  const categoryLabel = getCategoryAvailabilityLabel(category)
+  const categoryWithBrand = context.preferredBrand
+    ? `${categoryLabel} ${context.preferredBrand}`
+    : categoryLabel
+
+  if (!alternatives.length) {
+    return [
+      `Ahora mismo no tenemos ${categoryWithBrand} disponibles en el inventario.`,
+      'Si quieres, puedo ampliar la búsqueda por presupuesto, combustible o tipo de uso para enseñarte la alternativa más cercana.',
+    ].join('\n\n')
+  }
+
+  const lines = alternatives.map((vehicle) => (
+    `- ${vehicle.brand} ${vehicle.model} ${vehicle.year} (${formatUsd(vehicle.price)}) · ${buildReason(vehicle, context, 'inventory_search', true)}`
+  ))
+
+  return [
+    `Ahora mismo no tenemos ${categoryWithBrand} disponibles en el inventario.`,
+    'Sí puedo enseñarte estas alternativas reales publicadas que se acercan a lo que buscas:',
+    ...lines,
+    '',
+    'Si quieres, te las filtro por presupuesto, marca o combustible para acercarnos más a lo que tienes en mente.',
   ].join('\n')
 }
 
@@ -633,7 +724,27 @@ export function getRecommendationResponse({ intent, message, currentContext, upd
         ...vehiclesForCards.map((vehicle) => serializeVehicle(vehicle, updatedContext, intent, exactMatches.length === 0)),
       )
 
-      if (intent === 'family_vehicle' && vehiclesForCards.length === 0) {
+      const desiredCategory = getCategoryFromIntent(intent, updatedContext)
+      const hasCategoryIntent = ['suv_search', 'sedan_search', 'pickup_search'].includes(intent)
+
+      if (vehiclesForCards.length === 0 && hasCategoryIntent && desiredCategory) {
+        const categoryAlternatives = rankVehicles(
+          applyBaseFilters(
+            'inventory_search',
+            { ...updatedContext, vehicleType: null },
+            inventory,
+            { ignoreBudget: true },
+          ),
+          { ...updatedContext, vehicleType: null },
+          'inventory_search',
+        ).slice(0, MAX_RECOMMENDATIONS)
+
+        referenceVehicles.push(
+          ...categoryAlternatives.map((vehicle) => serializeVehicle(vehicle, updatedContext, intent, true)),
+        )
+
+        fallbackReply = buildCategoryUnavailableReply(desiredCategory, categoryAlternatives, updatedContext)
+      } else if (intent === 'family_vehicle' && vehiclesForCards.length === 0) {
         fallbackReply = [
           'No encontré una coincidencia exacta para un vehículo familiar con esos criterios ahora mismo.',
           'Si quieres, te puedo abrir un poco la búsqueda y enseñarte las opciones más cercanas por espacio, precio o tracción.',

@@ -1,14 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion, useMotionValue, animate } from 'framer-motion'
 
 const SLIDES = [
   {
     id: 'taller',
     category: 'Taller Autorizado',
     title: 'Servicio Toyota',
-    subtitle: 'Técnicos certificados · Repuestos originales',
-    features: ['Diagnóstico computarizado', 'Cambio de aceite y filtros', 'Alineación y balanceo'],
+    subtitle: 'Tecnicos certificados · Repuestos originales',
+    features: ['Diagnostico computarizado', 'Cambio de aceite y filtros', 'Alineacion y balanceo'],
     cta: 'Ver servicios',
     ctaLink: '/taller',
     image: '/images/benzan.webp',
@@ -18,8 +17,8 @@ const SLIDES = [
     id: 'bar',
     category: 'Lifestyle',
     title: 'Bar & Grill',
-    subtitle: 'Lun – Sáb · 11 AM – 11 PM',
-    features: ['Parrilla artesanal y cortes premium', 'Coctelería clásica y especiales', 'Música en vivo los fines de semana'],
+    subtitle: 'Lun – Sab · 11 AM – 11 PM',
+    features: ['Parrilla artesanal y cortes premium', 'Cocteleria clasica y especiales', 'Musica en vivo los fines de semana'],
     cta: 'Conocer el espacio',
     ctaLink: '/bar-grill',
     image: '/images/BAR.jpeg',
@@ -27,340 +26,324 @@ const SLIDES = [
   },
   {
     id: 'gasolina',
-    category: 'Estación de Servicio',
+    category: 'Estacion de Servicio',
     title: 'Bomba Texaco',
-    subtitle: 'Estación certificada · Abierta 24 / 7',
-    features: ['Gasolina regular y premium', 'Diésel y GLP disponibles', 'Tienda de conveniencia'],
-    cta: 'Más información',
+    subtitle: 'Estacion certificada · Abierta 24 / 7',
+    features: ['Gasolina regular y premium', 'Diesel y GLP disponibles', 'Tienda de conveniencia'],
+    cta: 'Mas informacion',
     ctaLink: '/bomba-gasolina',
     image: '/images/banner-desktop.webp',
     video: '/videos/texaco.mp4',
   },
 ]
 
-/* Triple the deck for seamless infinite loop */
-const TRACK  = [...SLIDES, ...SLIDES, ...SLIDES]
-const OFFSET = SLIDES.length
-const N      = SLIDES.length
-const AUTOPLAY_MS = 5500
-const PEEK_RATIO  = 0.17
+const DRAG_THRESHOLD_PX = 6
+const EDGE_TOLERANCE_PX = 12
 
-function mod(n, m) { return ((n % m) + m) % m }
+function ServiceCard({ slide }) {
+  return (
+    <article
+      className="group relative isolate h-[clamp(360px,44vw,600px)] snap-start overflow-hidden rounded-[28px] border border-neutral-200/70 bg-neutral-950 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
+    >
+      {slide.video ? (
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          src={slide.video}
+          autoPlay
+          muted
+          loop
+          playsInline
+          poster={slide.image}
+        />
+      ) : (
+        <img
+          src={slide.image}
+          alt={slide.title}
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+        />
+      )}
+
+      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/28 to-black/18" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/12" />
+
+      <div className="relative flex h-full flex-col justify-between p-6 sm:p-7 lg:p-8">
+        <div className="max-w-[26rem]">
+          <p className="font-body text-[11px] font-semibold uppercase tracking-[0.22em] text-white/72">
+            {slide.category}
+          </p>
+        </div>
+
+        <div className="max-w-[30rem]">
+          <h3 className="font-heading text-[clamp(28px,4vw,54px)] font-800 leading-[0.95] tracking-tight text-white">
+            {slide.title}
+          </h3>
+          <p className="mt-3 max-w-[28rem] font-body text-sm leading-relaxed text-white/72 sm:text-[15px]">
+            {slide.subtitle}
+          </p>
+
+          <ul className="mt-5 space-y-2.5">
+            {slide.features.map((feature) => (
+              <li key={feature} className="flex items-start gap-3">
+                <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-b-red" />
+                <span className="font-body text-sm leading-relaxed text-white/82">
+                  {feature}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-7">
+            <Link
+              to={slide.ctaLink}
+              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 font-body text-xs font-semibold uppercase tracking-[0.18em] text-neutral-900 transition-all duration-200 hover:bg-neutral-100 hover:shadow-[0_10px_32px_rgba(255,255,255,0.22)]"
+            >
+              {slide.cta}
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </article>
+  )
+}
 
 export default function ServicesCarousel() {
-  const containerRef = useRef(null)
-  const [cw, setCw]  = useState(0)
-  const [vIdx, setVIdx] = useState(OFFSET)
-  const trackX       = useMotionValue(0)
-  const busy         = useRef(false)
-  const timerRef     = useRef(null)
+  const scrollRef = useRef(null)
+  const dragStateRef = useRef({
+    active: false,
+    moved: false,
+    startX: 0,
+    startScrollLeft: 0,
+    pointerId: null,
+  })
+  const blockClickRef = useRef(false)
 
-  /* pointer drag */
-  const pointerStart = useRef(0)
-  const motionStart  = useRef(0)
-  const dragging     = useRef(false)
+  const [canScrollPrev, setCanScrollPrev] = useState(false)
+  const [canScrollNext, setCanScrollNext] = useState(true)
+  const [isDragging, setIsDragging] = useState(false)
 
-  /* ── dimensions ── */
-  const peek   = cw * PEEK_RATIO
-  const gap    = 8
-  const slideW = cw - 2 * peek - 2 * gap
-  const unitW  = slideW + gap
+  const updateEdgeState = useCallback(() => {
+    const element = scrollRef.current
+    if (!element) return
 
-  const xFor = useCallback(
-    (idx) => (cw - slideW) / 2 - idx * unitW,
-    [cw, slideW, unitW],
-  )
+    const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth)
+    setCanScrollPrev(element.scrollLeft > EDGE_TOLERANCE_PX)
+    setCanScrollNext(element.scrollLeft < maxScrollLeft - EDGE_TOLERANCE_PX)
+  }, [])
 
-  /* measure container */
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setCw(e.contentRect.width))
-    ro.observe(el)
-    return () => ro.disconnect()
+  const scrollByViewport = useCallback((direction) => {
+    const element = scrollRef.current
+    if (!element) return
+
+    const amount = Math.max(element.clientWidth * 0.78, 320)
+    element.scrollBy({
+      left: amount * direction,
+      behavior: 'smooth',
+    })
   }, [])
 
   useEffect(() => {
-    if (cw > 0) trackX.set(xFor(vIdx))
-  }, [cw]) // eslint-disable-line
+    const element = scrollRef.current
+    if (!element) return
 
-  /* ── go to virtual index ── */
-  const goTo = useCallback((nextV) => {
-    if (busy.current || cw === 0) return
-    busy.current = true
-    animate(trackX, xFor(nextV), {
-      duration: 0.52,
-      ease: [0.22, 1, 0.36, 1],
-    }).then(() => {
-      const norm = OFFSET + mod(nextV - OFFSET, N)
-      setVIdx(norm)
-      trackX.set(xFor(norm))
-      busy.current = false
-    })
-  }, [cw, xFor, trackX])
+    updateEdgeState()
 
-  /* ── auto-play ── */
-  const vIdxRef = useRef(vIdx)
-  vIdxRef.current = vIdx
+    const handleScroll = () => updateEdgeState()
+    const resizeObserver = new ResizeObserver(() => updateEdgeState())
 
-  const resetTimer = useCallback(() => {
-    clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => goTo(vIdxRef.current + 1), AUTOPLAY_MS)
-  }, [goTo])
+    element.addEventListener('scroll', handleScroll, { passive: true })
+    resizeObserver.observe(element)
 
-  useEffect(() => {
-    if (cw > 0) { resetTimer(); return () => clearInterval(timerRef.current) }
-  }, [cw, resetTimer])
-
-  const handleNext = useCallback(() => { goTo(vIdxRef.current + 1); resetTimer() }, [goTo, resetTimer])
-  const handlePrev = useCallback(() => { goTo(vIdxRef.current - 1); resetTimer() }, [goTo, resetTimer])
-  const handleDot  = (i) => { goTo(OFFSET + i); resetTimer() }
-
-  /* ── WHEEL (trackpad two-finger horizontal scroll) ── */
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    let lastFire = 0
-    const onWheel = (e) => {
-      /* only horizontal swipes */
-      if (Math.abs(e.deltaX) < Math.abs(e.deltaY) * 0.5) return
-      e.preventDefault()
-      const now = Date.now()
-      if (now - lastFire < 700) return   // debounce
-      lastFire = now
-      if (e.deltaX > 15)       handleNext()
-      else if (e.deltaX < -15) handlePrev()
+    return () => {
+      element.removeEventListener('scroll', handleScroll)
+      resizeObserver.disconnect()
     }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [handleNext, handlePrev])
+  }, [updateEdgeState])
 
-  /* ── POINTER drag (mouse / touch) ── */
-  const onPointerDown = (e) => {
-    if (busy.current) return
-    dragging.current = true
-    pointerStart.current = e.touches ? e.touches[0].clientX : e.clientX
-    motionStart.current  = trackX.get()
-  }
-  const onPointerMove = (e) => {
-    if (!dragging.current) return
-    const cx = e.touches ? e.touches[0].clientX : e.clientX
-    trackX.set(motionStart.current + cx - pointerStart.current)
-  }
-  const onPointerUp = (e) => {
-    if (!dragging.current) return
-    dragging.current = false
-    const cx    = e.changedTouches ? e.changedTouches[0].clientX : e.clientX
-    const delta = cx - pointerStart.current
-    const thr   = Math.min(slideW * 0.18, 70)
-    if (delta < -thr)     handleNext()
-    else if (delta > thr) handlePrev()
-    else animate(trackX, xFor(vIdx), { type: 'spring', stiffness: 500, damping: 45 })
-  }
+  const endDrag = useCallback(() => {
+    if (!dragStateRef.current.active) return
 
-  const active = mod(vIdx, N)
-  const trackW = TRACK.length * slideW + (TRACK.length - 1) * gap
+    dragStateRef.current.active = false
+    dragStateRef.current.pointerId = null
+    setIsDragging(false)
+    updateEdgeState()
+  }, [updateEdgeState])
+
+  const handlePointerDown = useCallback((event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return
+    if (event.target.closest('a, button')) return
+
+    const element = scrollRef.current
+    if (!element) return
+
+    dragStateRef.current = {
+      active: true,
+      moved: false,
+      startX: event.clientX,
+      startScrollLeft: element.scrollLeft,
+      pointerId: event.pointerId,
+    }
+    blockClickRef.current = false
+    setIsDragging(true)
+    element.setPointerCapture?.(event.pointerId)
+  }, [])
+
+  const handlePointerMove = useCallback((event) => {
+    const element = scrollRef.current
+    if (!dragStateRef.current.active || !element) return
+
+    const deltaX = event.clientX - dragStateRef.current.startX
+    if (Math.abs(deltaX) > DRAG_THRESHOLD_PX) {
+      dragStateRef.current.moved = true
+      blockClickRef.current = true
+    }
+
+    element.scrollLeft = dragStateRef.current.startScrollLeft - deltaX
+  }, [])
+
+  const handlePointerUp = useCallback((event) => {
+    const element = scrollRef.current
+    if (dragStateRef.current.pointerId !== null) {
+      element?.releasePointerCapture?.(dragStateRef.current.pointerId)
+    }
+    endDrag()
+  }, [endDrag])
+
+  const handlePointerCancel = useCallback(() => {
+    endDrag()
+  }, [endDrag])
+
+  const handleClickCapture = useCallback((event) => {
+    if (!blockClickRef.current) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    blockClickRef.current = false
+  }, [])
+
+  const handleKeyDown = useCallback((event) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      scrollByViewport(1)
+      return
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      scrollByViewport(-1)
+    }
+  }, [scrollByViewport])
 
   return (
-    <section className="bg-white pt-12 pb-10 overflow-hidden">
+    <section className="overflow-hidden bg-white py-12">
+      <div className="mb-7 flex items-end justify-between gap-6 px-6 lg:px-10">
+        <div className="max-w-2xl">
+          <div className="mb-3 flex items-center gap-4">
+            <span className="block h-px w-8 flex-shrink-0 bg-b-red" />
+            <h2 className="font-heading text-2xl font-800 tracking-tight text-neutral-900 sm:text-3xl">
+              Nuestros Servicios
+            </h2>
+          </div>
+          <p className="font-body text-sm leading-relaxed text-neutral-500 sm:text-[15px]">
+            Desliza libremente con trackpad, touch o arrastre para explorar cada experiencia sin pausas artificiales.
+          </p>
+        </div>
 
-      {/* ── Heading ── */}
-      <div className="flex items-center gap-4 px-6 lg:px-10 mb-8">
-        <span className="block w-8 h-px bg-b-red flex-shrink-0" />
-        <h2 className="font-heading font-800 text-2xl sm:text-3xl text-neutral-900 tracking-tight leading-none">
-          Nuestros Servicios
-        </h2>
-      </div>
-
-      {/* ── Carousel ── */}
-      <div
-        ref={containerRef}
-        className="relative overflow-hidden select-none"
-        style={{ height: 'clamp(260px, 36vw, 620px)', cursor: dragging.current ? 'grabbing' : 'grab' }}
-        onMouseDown={onPointerDown}
-        onMouseMove={onPointerMove}
-        onMouseUp={onPointerUp}
-        onMouseLeave={onPointerUp}
-        onTouchStart={onPointerDown}
-        onTouchMove={onPointerMove}
-        onTouchEnd={onPointerUp}
-      >
-        {/* sliding track */}
-        <motion.div
-          className="absolute inset-y-0 flex"
-          style={{ x: trackX, width: trackW, gap }}
-        >
-          {TRACK.map((slide, i) => {
-            const isCenter = mod(i - OFFSET, N) === active && i >= OFFSET && i < OFFSET + N
-            return (
-              <div
-                key={i}
-                className="relative flex-shrink-0 overflow-hidden rounded-xl"
-                style={{ width: slideW }}
-              >
-                {/* ── Media ── */}
-                {slide.video ? (
-                  <video
-                    className="absolute inset-0 w-full h-full object-cover"
-                    src={slide.video} autoPlay muted loop playsInline poster={slide.image}
-                  />
-                ) : (
-                  <img
-                    src={slide.image} alt={slide.title} draggable={false}
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                )}
-
-                {/* Gradient ONLY on center card */}
-                {isCenter && (
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent pointer-events-none" />
-                )}
-
-                {/* ── Category badge — all cards, text-shadow for legibility ── */}
-                <p
-                  className="absolute top-4 left-5 font-body text-[10px] text-white uppercase tracking-[0.18em]"
-                  style={{ textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}
-                >
-                  {slide.category}
-                </p>
-
-                {/* ── SIDE CARD: title + subtitle only ── */}
-                {!isCenter && (
-                  <div className="absolute bottom-0 left-0 right-0 px-5 pb-5">
-                    <p
-                      className="font-heading font-800 text-white text-lg sm:text-2xl leading-tight tracking-tight"
-                      style={{ textShadow: '0 2px 10px rgba(0,0,0,0.8)' }}
-                    >
-                      {slide.title}
-                    </p>
-                    <p
-                      className="font-body text-xs text-white/80 mt-1 hidden sm:block"
-                      style={{ textShadow: '0 1px 6px rgba(0,0,0,0.8)' }}
-                    >
-                      {slide.subtitle}
-                    </p>
-                  </div>
-                )}
-
-                {/* ── CENTER CARD: full content ── */}
-                {isCenter && (
-                  <div className="absolute bottom-0 left-0 right-0 px-6 pb-6 sm:px-8 sm:pb-8">
-
-                    {/* Title */}
-                    <motion.h3
-                      key={slide.id + '-t'}
-                      className="font-heading font-800 text-white leading-none tracking-tight"
-                      style={{ fontSize: 'clamp(24px, 3vw, 50px)' }}
-                      initial={{ y: 14, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      {slide.title}
-                    </motion.h3>
-
-                    {/* Subtitle */}
-                    <motion.p
-                      key={slide.id + '-s'}
-                      className="font-body text-sm text-white/70 mt-1.5 mb-4"
-                      initial={{ y: 10, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.08, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      {slide.subtitle}
-                    </motion.p>
-
-                    {/* Features */}
-                    <motion.ul
-                      key={slide.id + '-f'}
-                      className="space-y-1 mb-5"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.15, duration: 0.3 }}
-                    >
-                      {slide.features.map((f) => (
-                        <li key={f} className="flex items-center gap-2">
-                          <span className="w-1 h-1 rounded-full bg-b-red flex-shrink-0" />
-                          <span className="font-body text-xs text-white/80">{f}</span>
-                        </li>
-                      ))}
-                    </motion.ul>
-
-                    {/* CTA */}
-                    <motion.div
-                      key={slide.id + '-cta'}
-                      initial={{ y: 8, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.22, duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      <Link
-                        to={slide.ctaLink}
-                        onMouseDown={e => e.stopPropagation()}
-                        className="inline-flex items-center gap-2 bg-white hover:bg-neutral-100 text-neutral-900 font-body font-semibold text-xs uppercase tracking-widest px-5 py-2.5 transition-colors duration-200"
-                      >
-                        {slide.cta}
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </Link>
-                    </motion.div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </motion.div>
-
-        {/* arrows */}
-        <button
-          onClick={handlePrev}
-          onMouseDown={e => e.stopPropagation()}
-          aria-label="Anterior"
-          className="absolute top-1/2 -translate-y-1/2 z-20 w-9 h-9 bg-white/90 backdrop-blur-sm shadow flex items-center justify-center hover:bg-white transition-colors"
-          style={{ left: Math.max(8, peek / 2 - 18) }}
-        >
-          <svg className="w-4 h-4 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <button
-          onClick={handleNext}
-          onMouseDown={e => e.stopPropagation()}
-          aria-label="Siguiente"
-          className="absolute top-1/2 -translate-y-1/2 z-20 w-9 h-9 bg-white/90 backdrop-blur-sm shadow flex items-center justify-center hover:bg-white transition-colors"
-          style={{ right: Math.max(8, peek / 2 - 18) }}
-        >
-          <svg className="w-4 h-4 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-
-        {/* progress bar */}
-        <div
-          className="absolute bottom-0 z-10"
-          style={{ left: peek + gap, right: peek + gap, height: 2, background: 'rgba(255,255,255,0.18)' }}
-        >
-          <motion.div
-            key={active}
-            className="h-full bg-white/55"
-            initial={{ width: '0%' }}
-            animate={{ width: '100%' }}
-            transition={{ duration: AUTOPLAY_MS / 1000, ease: 'linear' }}
-          />
+        <div className="hidden items-center gap-2 md:flex">
+          <button
+            type="button"
+            onClick={() => scrollByViewport(-1)}
+            disabled={!canScrollPrev}
+            aria-label="Desplazar servicios hacia la izquierda"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 transition-all duration-200 hover:border-neutral-300 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollByViewport(1)}
+            disabled={!canScrollNext}
+            aria-label="Desplazar servicios hacia la derecha"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 transition-all duration-200 hover:border-neutral-300 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* dots */}
-      <div className="flex items-center justify-center gap-2 mt-5">
-        {SLIDES.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => handleDot(i)}
-            aria-label={SLIDES[i].category}
-            className={`rounded-full transition-all duration-300 ${
-              i === active ? 'w-2.5 h-2.5 bg-neutral-800' : 'w-2.5 h-2.5 bg-neutral-300 hover:bg-neutral-500'
-            }`}
-          />
-        ))}
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 hidden w-16 bg-gradient-to-r from-white via-white/92 to-transparent lg:block" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 hidden w-16 bg-gradient-to-l from-white via-white/92 to-transparent lg:block" />
+
+        <div
+          ref={scrollRef}
+          role="region"
+          aria-label="Carrusel horizontal de servicios Benzan"
+          tabIndex={0}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onClickCapture={handleClickCapture}
+          onKeyDown={handleKeyDown}
+          className={`scrollbar-none flex snap-x snap-proximity gap-5 overflow-x-auto px-6 pb-4 pt-1 outline-none lg:px-10 ${
+            isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'
+          }`}
+          style={{
+            scrollBehavior: 'smooth',
+            scrollPaddingInline: 'max(1.5rem, 5vw)',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorX: 'contain',
+            touchAction: 'pan-y pinch-zoom',
+          }}
+        >
+          {SLIDES.map((slide) => (
+            <div
+              key={slide.id}
+              className="min-w-0 flex-[0_0_84vw] sm:flex-[0_0_72vw] lg:flex-[0_0_58vw] xl:flex-[0_0_46vw] 2xl:flex-[0_0_40vw]"
+            >
+              <ServiceCard slide={slide} />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between px-6 md:hidden lg:px-10">
+          <p className="font-body text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+            Desliza para explorar
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => scrollByViewport(-1)}
+              disabled={!canScrollPrev}
+              aria-label="Desplazar servicios hacia la izquierda"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 transition-all duration-200 disabled:opacity-35"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollByViewport(1)}
+              disabled={!canScrollNext}
+              aria-label="Desplazar servicios hacia la derecha"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 transition-all duration-200 disabled:opacity-35"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   )

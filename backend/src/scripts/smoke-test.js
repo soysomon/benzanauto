@@ -251,6 +251,29 @@ async function run() {
     assert.equal(storedVehicle.mainImage, secondImage.url)
     assert.equal(storedVehicle.images.find((image) => image.isMain)?.url, secondImage.url)
 
+    const sedanVehicle = await Vehicle.create({
+      title: 'Toyota Corolla XLE 2026',
+      slug: 'toyota-corolla-xle-2026',
+      brand: 'Toyota',
+      model: 'Corolla XLE',
+      year: 2026,
+      price: 32000,
+      currency: 'USD',
+      mileage: 0,
+      transmission: 'Automático',
+      fuelType: 'Gasolina',
+      bodyType: 'Sedan',
+      drivetrain: 'FWD',
+      color: 'Plata',
+      condition: 'Nuevo',
+      location: 'San Juan de la Maguana, RD',
+      description: 'Sedan cómodo y eficiente para uso diario, con buen espacio interior y consumo equilibrado.',
+      status: 'published',
+      publishedAt: new Date(),
+      createdBy: storedVehicle.createdBy ?? null,
+      updatedBy: storedVehicle.updatedBy ?? null,
+    })
+
     const featureResponse = await adminAgent
       .patch(`/api/admin/vehicles/${vehicleId}/featured`)
       .set(csrfHeaderName, csrfToken)
@@ -260,9 +283,8 @@ async function run() {
 
     const publicListResponse = await request(app).get('/api/vehicles')
     assert.equal(publicListResponse.status, 200)
-    assert.equal(publicListResponse.body.data.length, 1)
-    assert.equal(publicListResponse.body.data[0].status, 'published')
-    assert.equal(publicListResponse.body.data[0].condition, 'Nuevo')
+    assert.equal(publicListResponse.body.data.length, 2)
+    assert.ok(publicListResponse.body.data.every((vehicle) => vehicle.status === 'published'))
 
     const createCampaignResponse = await adminAgent
       .post('/api/admin/campaigns')
@@ -320,11 +342,11 @@ async function run() {
     assert.equal(publicCampaignResponse.body.campaign.ctaUrl, '/inventario')
     assert.equal(publicCampaignResponse.body.campaign.status, undefined)
 
-    const slug = publicListResponse.body.data[0].slug
+    const primaryVehicleSlug = createVehicleResponse.body.vehicle.slug
 
-    const detailResponse = await request(app).get(`/api/vehicles/${slug}`)
+    const detailResponse = await request(app).get(`/api/vehicles/${primaryVehicleSlug}`)
     assert.equal(detailResponse.status, 200)
-    assert.equal(detailResponse.body.vehicle.slug, slug)
+    assert.equal(detailResponse.body.vehicle.slug, primaryVehicleSlug)
     assert.equal(detailResponse.body.vehicle.status, 'published')
     assert.equal(detailResponse.body.vehicle.condition, 'Nuevo')
     assert.equal(detailResponse.body.vehicle.mainImage, secondImage.url)
@@ -333,7 +355,7 @@ async function run() {
     const chatResponse = await request(app)
       .post('/api/chat')
       .send({
-        message: '¿Qué Toyota tienen disponibles ahora mismo?',
+        message: '¿Qué SUV Toyota tienen disponibles ahora mismo?',
         history: [],
         currentContext: {},
       })
@@ -341,11 +363,34 @@ async function run() {
     assert.equal(chatResponse.status, 200)
     assert.equal(chatResponse.body.recommendedVehicles.length, 1)
     assert.equal(chatResponse.body.recommendedVehicles[0].id, vehicleId)
-    assert.equal(chatResponse.body.recommendedVehicles[0].slug, slug)
+    assert.equal(chatResponse.body.recommendedVehicles[0].slug, primaryVehicleSlug)
     assert.equal(chatResponse.body.recommendedVehicles[0].brand, 'Toyota')
     assert.equal(chatResponse.body.recommendedVehicles[0].model, 'Prado VX')
 
-    const contactResponse = await request(app).post(`/api/vehicles/${slug}/contact`)
+    const sedanChatResponse = await request(app)
+      .post('/api/chat')
+      .send({
+        message: '¿Tienen sedanes disponibles?',
+        history: [],
+        currentContext: {},
+      })
+
+    assert.equal(sedanChatResponse.status, 200)
+    assert.ok(sedanChatResponse.body.recommendedVehicles.some((vehicle) => vehicle.id === String(sedanVehicle._id)))
+
+    const pickupChatResponse = await request(app)
+      .post('/api/chat')
+      .send({
+        message: '¿Qué pickups tienen disponibles?',
+        history: [],
+        currentContext: {},
+      })
+
+    assert.equal(pickupChatResponse.status, 200)
+    assert.match(pickupChatResponse.body.reply, /no tenemos pickups disponibles/i)
+    assert.ok(pickupChatResponse.body.recommendedVehicles.length >= 1)
+
+    const contactResponse = await request(app).post(`/api/vehicles/${primaryVehicleSlug}/contact`)
     assert.equal(contactResponse.status, 200)
     assert.equal(contactResponse.body.contactCount, 1)
 
@@ -353,7 +398,7 @@ async function run() {
       .get('/api/admin/dashboard/stats')
 
     assert.equal(statsResponse.status, 200)
-    assert.equal(statsResponse.body.counts.totalVehicles, 1)
+    assert.equal(statsResponse.body.counts.totalVehicles, 2)
 
     const deleteResponse = await adminAgent
       .delete(`/api/admin/vehicles/${vehicleId}`)

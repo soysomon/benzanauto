@@ -251,7 +251,7 @@ export function detectIntent({ message, currentContext = {}, inventory = [] }) {
     return 'suv_search'
   }
 
-  if (signals.vehicleType === 'Sedán') {
+  if (signals.vehicleType === 'Sedan' || signals.vehicleType === 'Sedán') {
     return 'sedan_search'
   }
 
