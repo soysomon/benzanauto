@@ -43,7 +43,7 @@ const EDGE_TOLERANCE_PX = 12
 function ServiceCard({ slide }) {
   return (
     <article
-      className="group relative isolate h-[550px] w-full max-w-[330px] snap-start overflow-hidden rounded-[28px] border border-neutral-200/70 bg-neutral-950 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
+      className="group relative isolate h-[clamp(440px,36vw,640px)] w-full snap-start overflow-hidden rounded-[28px] border border-neutral-200/70 bg-neutral-950 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
     >
       {slide.video ? (
         <video
@@ -318,7 +318,7 @@ export default function ServicesCarousel() {
             <div
               key={slide.id}
               className="min-w-0 flex-none"
-              style={{ width: 'min(330px, calc(100vw - 3rem))' }}
+              style={{ width: 'min(1120px, calc(100vw - 3rem))' }}
             >
               <ServiceCard slide={slide} />
             </div>
