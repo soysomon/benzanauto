@@ -43,7 +43,7 @@ const EDGE_TOLERANCE_PX = 12
 function ServiceCard({ slide }) {
   return (
     <article
-      className="group relative isolate h-[clamp(360px,44vw,600px)] snap-start overflow-hidden rounded-[28px] border border-neutral-200/70 bg-neutral-950 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
+      className="group relative isolate h-[550px] w-full max-w-[330px] snap-start overflow-hidden rounded-[28px] border border-neutral-200/70 bg-neutral-950 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
     >
       {slide.video ? (
         <video
@@ -65,8 +65,8 @@ function ServiceCard({ slide }) {
         />
       )}
 
-      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/28 to-black/18" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/12" />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/82 via-black/42 to-black/24" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/18 to-black/18" />
 
       <div className="relative flex h-full flex-col justify-between p-6 sm:p-7 lg:p-8">
         <div className="max-w-[26rem]">
@@ -76,10 +76,16 @@ function ServiceCard({ slide }) {
         </div>
 
         <div className="max-w-[30rem]">
-          <h3 className="font-heading text-[clamp(28px,4vw,54px)] font-800 leading-[0.95] tracking-tight text-white">
+          <h3
+            className="font-heading text-[clamp(28px,4vw,54px)] font-800 leading-[0.95] tracking-tight text-white"
+            style={{ textShadow: '0 6px 18px rgba(0,0,0,0.45)' }}
+          >
             {slide.title}
           </h3>
-          <p className="mt-3 max-w-[28rem] font-body text-sm leading-relaxed text-white/72 sm:text-[15px]">
+          <p
+            className="mt-3 max-w-[28rem] font-body text-sm leading-relaxed text-white sm:text-[15px]"
+            style={{ textShadow: '0 3px 12px rgba(0,0,0,0.55)' }}
+          >
             {slide.subtitle}
           </p>
 
@@ -87,7 +93,10 @@ function ServiceCard({ slide }) {
             {slide.features.map((feature) => (
               <li key={feature} className="flex items-start gap-3">
                 <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-b-red" />
-                <span className="font-body text-sm leading-relaxed text-white/82">
+                <span
+                  className="font-body text-sm leading-relaxed text-white"
+                  style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}
+                >
                   {feature}
                 </span>
               </li>
@@ -308,7 +317,8 @@ export default function ServicesCarousel() {
           {SLIDES.map((slide) => (
             <div
               key={slide.id}
-              className="min-w-0 flex-[0_0_84vw] sm:flex-[0_0_72vw] lg:flex-[0_0_58vw] xl:flex-[0_0_46vw] 2xl:flex-[0_0_40vw]"
+              className="min-w-0 flex-none"
+              style={{ width: 'min(330px, calc(100vw - 3rem))' }}
             >
               <ServiceCard slide={slide} />
             </div>
