@@ -56,6 +56,7 @@ export default function AdminSecurityPage() {
         navigate('/admin', {
           replace: true,
           state: { message: successMessage },
+          viewTransition: true,
         })
         return
       }

@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom'
+import { prefetchRoute } from '../../lib/routeModules'
+import AdminViewTransition from './AdminViewTransition'
 import StatePanel from '../ui/StatePanel'
 
 const NAV_LINKS = [
@@ -12,8 +14,12 @@ function AdminNavLink({ to, label }) {
   return (
     <NavLink
       to={to}
+      viewTransition
+      onMouseEnter={() => { void prefetchRoute(to) }}
+      onFocus={() => { void prefetchRoute(to) }}
+      onTouchStart={() => { void prefetchRoute(to) }}
       className={({ isActive }) => [
-        'px-4 py-2 rounded-full font-body text-sm transition-colors',
+        'px-4 py-2 rounded-full font-body text-sm transition-[background-color,color,transform] duration-200',
         isActive ? 'bg-[#0A0A0A] text-white' : 'text-[#666] hover:text-[#0A0A0A] hover:bg-[#F3F3F3]',
       ].join(' ')}
     >
@@ -101,14 +107,17 @@ export default function AdminPageShell({
         </div>
       </header>
 
-      <section className="mx-auto max-w-7xl space-y-6 px-6 py-8" aria-labelledby={headingId}>
+      <AdminViewTransition
+        className="mx-auto max-w-7xl space-y-6 px-6 py-8"
+        aria-labelledby={headingId}
+      >
         {error ? (
           <div className="rounded-2xl border border-[#ffd6da] bg-[#FFF2F3] px-5 py-4 font-body text-sm text-[#b31a2b]" role="alert">
             {error}
           </div>
         ) : null}
         {children}
-      </section>
+      </AdminViewTransition>
     </div>
   )
 }

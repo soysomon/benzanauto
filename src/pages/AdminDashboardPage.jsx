@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { COMPANY } from '../../shared/company.js'
+import AdminViewTransition from '../components/admin/AdminViewTransition'
 import StatePanel from '../components/ui/StatePanel'
 import {
   createAdminVehicle,
@@ -28,6 +29,7 @@ import {
 } from '../lib/adminSession'
 import { ApiError, UNAUTHORIZED_EVENT_NAME } from '../lib/apiClient'
 import { getVehicleDetail as getPublicVehicleDetail } from '../lib/publicApi'
+import { prefetchRoute } from '../lib/routeModules'
 import {
   fetchVehicleEnrichment,
   fetchVehicleMakes,
@@ -1177,6 +1179,10 @@ export default function AdminDashboardPage() {
   const [customModelMode, setCustomModelMode] = useState(false)
   const [customYearMode, setCustomYearMode] = useState(false)
 
+  const warmAdminRoute = (path) => {
+    void prefetchRoute(path)
+  }
+
   useEffect(() => {
     let ignore = false
 
@@ -2135,34 +2141,35 @@ export default function AdminDashboardPage() {
         </div>
       </nav>
 
-      {sessionRefreshing && (
-        <div className="mx-auto max-w-7xl px-6 pt-4">
-          <div className="rounded-2xl bg-white border border-[#F0F0F0] px-4 py-3 font-body text-sm text-[#888] flex items-center gap-3">
-            <div className="w-4 h-4 border-2 border-[#DDD] border-t-[#777] rounded-full animate-spin flex-shrink-0" />
-            Verificando acceso y sincronizando tu sesión...
+      <AdminViewTransition>
+        {sessionRefreshing && (
+          <div className="mx-auto max-w-7xl px-6 pt-4">
+            <div className="rounded-2xl bg-white border border-[#F0F0F0] px-4 py-3 font-body text-sm text-[#888] flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-[#DDD] border-t-[#777] rounded-full animate-spin flex-shrink-0" />
+              Verificando acceso y sincronizando tu sesión...
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Toast area ── */}
-      {(actionError || feedback) && !wizardOpen && (
-        <div className="mx-auto max-w-7xl px-6 pt-5 space-y-2">
-          {actionError && (
-            <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-5 py-3.5 font-body text-sm text-[#b31a2b]">
-              {actionError}
-            </div>
-          )}
-          {feedback && !actionError && (
-            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-5 py-3.5 font-body text-sm text-emerald-700">
-              {feedback}
-            </div>
-          )}
-        </div>
-      )}
+        {/* ── Toast area ── */}
+        {(actionError || feedback) && !wizardOpen && (
+          <div className="mx-auto max-w-7xl px-6 pt-5 space-y-2">
+            {actionError && (
+              <div className="rounded-2xl bg-[#FFF2F3] border border-[#ffd6da] px-5 py-3.5 font-body text-sm text-[#b31a2b]">
+                {actionError}
+              </div>
+            )}
+            {feedback && !actionError && (
+              <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-5 py-3.5 font-body text-sm text-emerald-700">
+                {feedback}
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* ── Overview tab ── */}
-      {activeTab === 'overview' && (
-        <div className="mx-auto max-w-7xl px-6 py-14 space-y-14">
+        {/* ── Overview tab ── */}
+        {activeTab === 'overview' && (
+          <div className="mx-auto max-w-7xl px-6 py-14 space-y-14">
 
           {/* Hero */}
           <div>
@@ -2176,6 +2183,9 @@ export default function AdminDashboardPage() {
             <div className="mt-6 flex flex-wrap gap-2">
               <Link
                 to="/admin/security"
+                viewTransition
+                onMouseEnter={() => warmAdminRoute('/admin/security')}
+                onFocus={() => warmAdminRoute('/admin/security')}
                 className="rounded-full border border-black/10 px-4 py-2 font-body text-sm text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-colors"
               >
                 Seguridad de la cuenta
@@ -2184,12 +2194,18 @@ export default function AdminDashboardPage() {
                 <>
                   <Link
                     to="/admin/users"
+                    viewTransition
+                    onMouseEnter={() => warmAdminRoute('/admin/users')}
+                    onFocus={() => warmAdminRoute('/admin/users')}
                     className="rounded-full border border-black/10 px-4 py-2 font-body text-sm text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-colors"
                   >
                     Gestionar usuarios
                   </Link>
                   <Link
                     to="/admin/audit"
+                    viewTransition
+                    onMouseEnter={() => warmAdminRoute('/admin/audit')}
+                    onFocus={() => warmAdminRoute('/admin/audit')}
                     className="rounded-full border border-black/10 px-4 py-2 font-body text-sm text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-colors"
                   >
                     Ver auditoría
@@ -2291,12 +2307,12 @@ export default function AdminDashboardPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* ── Inventory tab ── */}
-      {activeTab === 'inventory' && (
-        <div className="mx-auto max-w-7xl px-6 py-14">
+        {/* ── Inventory tab ── */}
+        {activeTab === 'inventory' && (
+          <div className="mx-auto max-w-7xl px-6 py-14">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
             <h2 className="font-heading text-3xl tracking-tight text-[#0A0A0A]">Inventario</h2>
             <AdminInput
@@ -2401,8 +2417,9 @@ export default function AdminDashboardPage() {
               </button>
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </AdminViewTransition>
 
       {/* ── Wizard overlay ── */}
       {wizardOpen && (
