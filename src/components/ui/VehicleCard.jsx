@@ -42,53 +42,50 @@ export default function VehicleCard({ vehicle, index = 0 }) {
       viewport={{ once: true, margin: '-40px' }}
       transition={reduceMotion ? { duration: 0 } : { duration: 0.5, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
       whileHover={reduceMotion ? undefined : { y: -4 }}
-      className="group relative overflow-hidden border border-neutral-200 bg-white transition-colors duration-300 hover:border-neutral-400"
+      className="group relative isolate cursor-pointer overflow-hidden border border-neutral-200 bg-white transition-colors duration-300 hover:border-neutral-400"
       onMouseEnter={ensurePrefetch}
       onFocus={ensurePrefetch}
       onTouchStart={ensurePrefetch}
     >
       <Link
         to={detailPath}
-        className="block focus:outline-none"
+        onMouseEnter={ensurePrefetch}
+        onFocus={ensurePrefetch}
+        className="absolute inset-0 z-10 rounded-[inherit] focus:outline-none focus-visible:ring-2 focus-visible:ring-b-red focus-visible:ring-inset"
         aria-label={`Ver detalle de ${vehicleLabel}`}
       >
-        <div className="relative aspect-[16/10] overflow-hidden bg-neutral-100">
-          <img
-            src={vehicle.image}
-            alt={`${vehicle.brand} ${vehicle.model}`}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-            loading="lazy"
-            decoding="async"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-transparent" />
-
-          <div className="absolute left-3 top-3 flex flex-col gap-1.5">
-            <Badge variant={conditionLabel === 'Nuevo' ? 'red' : 'outline'}>
-              {conditionLabel}
-            </Badge>
-            {vehicle.badge ? <Badge variant="default">{vehicle.badge}</Badge> : null}
-          </div>
-
-          <div className="absolute right-3 top-3">
-            <Badge variant="default">{vehicle.category}</Badge>
-          </div>
-        </div>
+        <span className="sr-only">Ver detalle de {vehicleLabel}</span>
       </Link>
+
+      <div className="relative aspect-[16/10] overflow-hidden bg-neutral-100">
+        <img
+          src={vehicle.image}
+          alt={`${vehicle.brand} ${vehicle.model}`}
+          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+          loading="lazy"
+          decoding="async"
+        />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-transparent" />
+
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1.5">
+          <Badge variant={conditionLabel === 'Nuevo' ? 'red' : 'outline'}>
+            {conditionLabel}
+          </Badge>
+          {vehicle.badge ? <Badge variant="default">{vehicle.badge}</Badge> : null}
+        </div>
+
+        <div className="pointer-events-none absolute right-3 top-3">
+          <Badge variant="default">{vehicle.category}</Badge>
+        </div>
+      </div>
 
       <div className="p-5">
         <div className="mb-3">
           <p className="mb-1 font-body text-xs uppercase tracking-widest text-neutral-400">
             {vehicle.brand} · {vehicle.year}
           </p>
-          <h3 className="font-heading text-2xl font-700 leading-none tracking-tight text-neutral-900">
-            <Link
-              to={detailPath}
-              onMouseEnter={ensurePrefetch}
-              onFocus={ensurePrefetch}
-              className="transition-colors hover:text-b-red focus:outline-none"
-            >
-              {vehicle.model}
-            </Link>
+          <h3 className="font-heading text-2xl font-700 leading-none tracking-tight text-neutral-900 transition-colors group-hover:text-b-red">
+            {vehicle.model}
           </h3>
         </div>
 
@@ -105,12 +102,15 @@ export default function VehicleCard({ vehicle, index = 0 }) {
             <p className="font-heading text-2xl font-700 text-neutral-900">{formatPrice(vehicle.price)}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="relative z-20 flex items-center gap-2">
             <a
               href={buildWhatsAppUrl(`Hola, me interesa el ${vehicleLabel}`)}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={registerContact}
+              onClick={(event) => {
+                event.stopPropagation()
+                registerContact()
+              }}
               className="flex h-9 w-9 items-center justify-center border border-[#25D366]/30 bg-[#25D366]/10 transition-colors hover:bg-[#25D366]/20"
               aria-label={`Consultar ${vehicleLabel} por WhatsApp`}
             >
@@ -119,17 +119,12 @@ export default function VehicleCard({ vehicle, index = 0 }) {
               </svg>
             </a>
 
-            <Link
-              to={detailPath}
-              onMouseEnter={ensurePrefetch}
-              onFocus={ensurePrefetch}
-              className="inline-flex items-center justify-center gap-1.5 bg-b-red px-4 py-2.5 text-xs font-semibold uppercase tracking-widest text-white"
-            >
+            <span className="pointer-events-none inline-flex items-center justify-center gap-1.5 bg-b-red px-4 py-2.5 text-xs font-semibold uppercase tracking-widest text-white">
               Ver detalle
               <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-            </Link>
+            </span>
           </div>
         </div>
       </div>

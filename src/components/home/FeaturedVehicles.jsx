@@ -12,7 +12,6 @@ function VehicleCell({
   loading = 'lazy',
   fetchPriority = 'auto',
 }) {
-  const navigate = useNavigate()
   const detailPath = `/vehiculo/${vehicle.slug ?? vehicle.legacyId ?? vehicle.id}`
   const titleSize =
     size === 'hero'
@@ -26,37 +25,45 @@ function VehicleCell({
   }
 
   return (
-    <motion.div
+    <motion.article
       initial={{ opacity: 0 }}
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 0.7, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-      onClick={() => navigate(detailPath)}
       onMouseEnter={ensurePrefetch}
       onFocus={ensurePrefetch}
-      className="relative w-full h-full overflow-hidden cursor-pointer group"
+      onTouchStart={ensurePrefetch}
+      className="group relative isolate h-full w-full cursor-pointer overflow-hidden bg-neutral-950"
     >
+      <Link
+        to={detailPath}
+        aria-label={`Ver detalle de ${vehicle.brand} ${vehicle.model} ${vehicle.year}`}
+        className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+      >
+        <span className="sr-only">Ver detalle de {vehicle.brand} {vehicle.model}</span>
+      </Link>
+
       <img
         src={vehicle.image}
         alt={`${vehicle.brand} ${vehicle.model}`}
         loading={loading}
-        fetchPriority={fetchPriority}
+        fetchpriority={fetchPriority}
         decoding="async"
         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
       />
 
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
-      <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-transparent" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-transparent" />
 
       {vehicle.badge && (
-        <div className="absolute top-4 left-4">
+        <div className="pointer-events-none absolute top-4 left-4">
           <span className="font-body text-[10px] font-semibold uppercase tracking-[0.2em] text-white bg-b-red px-2.5 py-1">
             {vehicle.badge}
           </span>
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 p-5 lg:p-6">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 p-5 lg:p-6">
         <p className="font-body text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50 mb-1">
           {vehicle.brand} · {vehicle.year}
         </p>
@@ -77,7 +84,7 @@ function VehicleCell({
           </span>
         </div>
       </div>
-    </motion.div>
+    </motion.article>
   )
 }
 
@@ -199,7 +206,7 @@ export default function FeaturedVehicles() {
           to="/inventario"
           onMouseEnter={() => { void prefetchRoute('/inventario') }}
           onFocus={() => { void prefetchRoute('/inventario') }}
-          className="font-body text-xs text-neutral-500 hover:text-neutral-900 uppercase tracking-widest transition-colors duration-200 flex items-center gap-1.5 group"
+          className="group relative z-20 -mr-2 -mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-body text-xs uppercase tracking-widest text-neutral-500 transition-colors duration-200 hover:text-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-b-red focus-visible:ring-offset-2"
         >
           Ver todo
           <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">

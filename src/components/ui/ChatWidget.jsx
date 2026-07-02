@@ -228,8 +228,9 @@ export default function ChatWidget() {
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="fixed bottom-0 left-0 right-0 z-40 flex justify-center px-4 pb-4 pointer-events-none"
           >
-            <div className="flex items-center gap-2 bg-white/95 backdrop-blur-md border border-neutral-200 shadow-xl pointer-events-auto"
-              style={{ borderRadius: 14, maxWidth: 740, width: '100%', padding: '6px 6px 6px 18px' }}
+            <div
+              className="pointer-events-auto inline-flex max-w-[calc(100vw-32px)] items-center gap-2 border border-neutral-200 bg-white/95 shadow-xl backdrop-blur-md"
+              style={{ borderRadius: 14, padding: '6px 6px 6px 18px' }}
             >
               {/* Input trigger */}
               <button
@@ -238,7 +239,7 @@ export default function ChatWidget() {
                 onClick={openChat}
                 aria-expanded={open}
                 aria-controls="benzan-ai-panel"
-                className="flex items-center gap-3 flex-1 text-left min-w-0"
+                className="flex min-w-0 items-center gap-3 text-left sm:max-w-[26rem]"
               >
                 <svg className="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
